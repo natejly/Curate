@@ -96,18 +96,20 @@ const ImagePredictor = () => {
   };
 
   return (
-    <div className="max-w-4xl mx-auto p-6 bg-white rounded-lg shadow-lg">
-      <h2 className="text-2xl font-bold mb-6 text-gray-800">🔮 Image Prediction</h2>
+    <div className="card-hover max-w-5xl mx-auto">
+      <div className="flex items-center mb-6">
+        <h2 className="text-2xl font-bold text-gray-800">Image Prediction</h2>
+      </div>
       
       {/* Model Selection */}
-      <div className="mb-6">
-        <label className="block text-sm font-medium text-gray-700 mb-2">
+      <div className="mb-6 animate-fade-in">
+        <label className="block text-sm font-medium text-gray-700 mb-3">
           Select Trained Model:
         </label>
         <select
           value={selectedModel}
           onChange={(e) => setSelectedModel(e.target.value)}
-          className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          className="input-modern"
         >
           <option value="">-- Select a model --</option>
           {availableModels.map((model) => (
@@ -119,52 +121,63 @@ const ImagePredictor = () => {
         </select>
         
         {availableModels.length === 0 && (
-          <p className="text-gray-500 text-sm mt-2">
-            No trained models available. Please train a model first.
-          </p>
+          <div className="mt-3 p-4 bg-gradient-to-r from-yellow-50 to-orange-50 border border-yellow-200 rounded-lg">
+            <div className="flex items-center">
+              <div>
+                <p className="text-yellow-800 font-medium">No trained models available</p>
+                <p className="text-yellow-600 text-sm mt-1">Please train a model first in the Train tab</p>
+              </div>
+            </div>
+          </div>
         )}
       </div>
 
       {/* Image Upload */}
-      <div className="mb-6">
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          Upload Image for Prediction:
+      <div className="mb-6 animate-fade-in">
+        <label className="block text-sm font-medium text-gray-700 mb-3">
+          📸 Upload Image for Prediction:
         </label>
         <input
           key={fileInputKey}
           type="file"
           accept="image/*"
           onChange={handleFileSelect}
-          className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          className="input-modern"
         />
       </div>
 
       {/* Image Preview */}
       {imagePreview && (
-        <div className="mb-6">
-          <h3 className="text-lg font-medium text-gray-700 mb-2">Image Preview:</h3>
+        <div className="mb-6 animate-slide-up">
+          <h3 className="text-lg font-medium text-gray-700 mb-3 flex items-center">
+            <span className="mr-2">🖼️</span>
+            Image Preview:
+          </h3>
           <div className="flex justify-center">
-            <img
-              src={imagePreview}
-              alt="Preview"
-              className="max-w-xs max-h-64 object-contain border border-gray-300 rounded-lg"
-            />
+            <div className="relative">
+              <img
+                src={imagePreview}
+                alt="Preview"
+                className="max-w-xs max-h-64 object-contain border border-gray-300 rounded-xl shadow-lg"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/10 to-transparent rounded-xl pointer-events-none"></div>
+            </div>
           </div>
         </div>
       )}
 
       {/* Action Buttons */}
-      <div className="flex gap-4 mb-6">
+      <div className="flex gap-4 mb-6 animate-fade-in">
         {!prediction ? (
           <>
             <button
               onClick={handlePredict}
               disabled={!selectedFile || !selectedModel || loading}
-              className="flex-1 bg-blue-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+              className="flex-1 btn-primary"
             >
               {loading ? (
                 <span className="flex items-center justify-center">
-                  <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <svg className="animate-spin -ml-1 mr-3 h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                   </svg>
@@ -177,7 +190,7 @@ const ImagePredictor = () => {
             
             <button
               onClick={handleClear}
-              className="bg-gray-500 text-white px-6 py-3 rounded-lg font-medium hover:bg-gray-600 transition-colors"
+              className="btn-secondary"
             >
               🗑️ Clear
             </button>
@@ -186,14 +199,14 @@ const ImagePredictor = () => {
           <>
             <button
               onClick={handlePredictAnother}
-              className="flex-1 bg-blue-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-blue-700 transition-colors"
+              className="flex-1 btn-primary"
             >
               🔄 Predict Another Image
             </button>
             
             <button
               onClick={() => setPrediction(null)}
-              className="bg-gray-500 text-white px-6 py-3 rounded-lg font-medium hover:bg-gray-600 transition-colors"
+              className="btn-secondary"
             >
               👁️ View Image Only
             </button>
@@ -203,54 +216,106 @@ const ImagePredictor = () => {
 
       {/* Prediction Results */}
       {prediction && (
-        <div className="bg-green-50 border border-green-200 rounded-lg p-6">
-          <h3 className="text-lg font-bold text-green-800 mb-4">🎉 Prediction Results</h3>
+        <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-xl p-6 shadow-lg animate-slide-up">
+          <div className="flex items-center mb-4">
+            <div className="text-2xl mr-3">🎉</div>
+            <h3 className="text-xl font-bold text-green-800">Prediction Results</h3>
+          </div>
           
           {/* Main Prediction */}
-          <div className="mb-4 p-4 bg-white rounded-lg border">
-            <div className="flex items-center justify-between">
+          <div className="mb-6 p-4 bg-white rounded-lg border shadow-sm">
+            <div className="flex items-center justify-between mb-3">
               <span className="text-lg font-medium text-gray-700">Predicted Class:</span>
-              <span className="text-2xl font-bold text-blue-600">{prediction.predicted_class}</span>
+              <span className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+                {prediction.predicted_class}
+              </span>
             </div>
-            <div className="flex items-center justify-between mt-2">
+            <div className="flex items-center justify-between">
               <span className="text-sm text-gray-600">Confidence:</span>
-              <span className="text-lg font-semibold text-green-600">{prediction.confidence_percentage}</span>
+              <div className="flex items-center space-x-2">
+                <div className="progress-bar w-24">
+                  <div 
+                    className="progress-fill" 
+                    style={{ width: `${parseFloat(prediction.confidence_percentage)}%` }}
+                  ></div>
+                </div>
+                <span className="text-lg font-bold text-green-600">{prediction.confidence_percentage}</span>
+              </div>
             </div>
           </div>
 
           {/* Top Predictions */}
           {prediction.top_predictions && prediction.top_predictions.length > 1 && (
-            <div>
-              <h4 className="font-medium text-gray-700 mb-2">Top Predictions:</h4>
+            <div className="mb-4">
+              <h4 className="font-medium text-gray-700 mb-3 flex items-center">
+                <span className="mr-2">📊</span>
+                Top Predictions:
+              </h4>
               <div className="space-y-2">
                 {prediction.top_predictions.map((pred, index) => (
-                  <div key={index} className="flex items-center justify-between p-2 bg-gray-50 rounded">
-                    <span className="font-medium">{pred.class}</span>
-                    <span className="text-sm text-gray-600">{pred.percentage}</span>
+                  <div key={index} className="flex items-center justify-between p-3 bg-gradient-to-r from-gray-50 to-blue-50 rounded-lg border">
+                    <span className="font-medium text-gray-700">{pred.class}</span>
+                    <div className="flex items-center space-x-2">
+                      <div className="progress-bar w-20">
+                        <div 
+                          className="h-full bg-gradient-to-r from-blue-400 to-blue-500 rounded-full transition-all duration-500 ease-out" 
+                          style={{ width: `${parseFloat(pred.percentage)}%` }}
+                        ></div>
+                      </div>
+                      <span className="text-sm text-gray-600 w-12 text-right">{pred.percentage}</span>
+                    </div>
                   </div>
                 ))}
               </div>
             </div>
           )}
 
-          <div className="mt-4 text-xs text-gray-500">
-            Model used: {prediction.model_used}
+          <div className="flex items-center text-xs text-gray-500 bg-white bg-opacity-50 rounded-lg p-2">
+            <span className="mr-1">🤖</span>
+            Model used: <span className="font-mono ml-1">{prediction.model_used}</span>
           </div>
         </div>
       )}
 
       {/* Model Info */}
       {selectedModel && availableModels.length > 0 && (
-        <div className="mt-6 p-4 bg-gray-50 rounded-lg">
-          <h3 className="font-medium text-gray-700 mb-2">Selected Model Info:</h3>
+        <div className="mt-6 p-6 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border border-blue-200 animate-fade-in">
+          <div className="flex items-center mb-4">
+            <div className="text-2xl mr-3">ℹ️</div>
+            <h3 className="font-bold text-lg text-gray-800">Selected Model Information</h3>
+          </div>
           {(() => {
             const model = availableModels.find(m => m.name === selectedModel);
             return model ? (
-              <div className="text-sm text-gray-600 grid grid-cols-2 gap-2">
-                <div>Type: {model.model_type}</div>
-                <div>Classes: {model.num_classes}</div>
-                <div>Training Accuracy: {model.training_accuracy ? `${(model.training_accuracy * 100).toFixed(1)}%` : 'N/A'}</div>
-                <div>Validation Accuracy: {model.validation_accuracy ? `${(model.validation_accuracy * 100).toFixed(1)}%` : 'N/A'}</div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <div className="flex items-center">
+                    <span className="text-sm font-medium text-gray-600 w-20">Type:</span>
+                    <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs font-medium">
+                      {model.model_type}
+                    </span>
+                  </div>
+                  <div className="flex items-center">
+                    <span className="text-sm font-medium text-gray-600 w-20">Classes:</span>
+                    <span className="px-2 py-1 bg-purple-100 text-purple-800 rounded text-xs font-medium">
+                      {model.num_classes}
+                    </span>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-center">
+                    <span className="text-sm font-medium text-gray-600 w-24">Training:</span>
+                    <span className="px-2 py-1 bg-green-100 text-green-800 rounded text-xs font-medium">
+                      {model.training_accuracy ? `${(model.training_accuracy * 100).toFixed(1)}%` : 'N/A'}
+                    </span>
+                  </div>
+                  <div className="flex items-center">
+                    <span className="text-sm font-medium text-gray-600 w-24">Validation:</span>
+                    <span className="px-2 py-1 bg-orange-100 text-orange-800 rounded text-xs font-medium">
+                      {model.validation_accuracy ? `${(model.validation_accuracy * 100).toFixed(1)}%` : 'N/A'}
+                    </span>
+                  </div>
+                </div>
               </div>
             ) : null;
           })()}
