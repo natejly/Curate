@@ -1,12 +1,46 @@
-from fastapi import FastAPI, APIRouter, UploadFile, File, HTTPException
+from fastapi import FastAPI, APIRouter, UploadFile, File, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 import tempfile
 import shutil
 from pathlib import Path
 from typing import Dict, List, Any
 from collections import defaultdict
+import time
 
 app = FastAPI(title="Curate Backend (skeleton)")
+
+# Configure max file size (100MB)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://localhost:5174"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    max_age=3600,
+)
+
+# Add request logging middleware
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start_time = time.time()
+    print(f"Incoming request: {request.method} {request.url}")
+    
+    # Don't log all headers for upload requests to avoid spam
+    if request.url.path != "/api/upload":
+        print(f"Headers: {dict(request.headers)}")
+    else:
+        print(f"Content-Length: {request.headers.get('content-length', 'unknown')}")
+        print(f"Content-Type: {request.headers.get('content-type', 'unknown')}")
+    
+    try:
+        response = await call_next(request)
+        process_time = time.time() - start_time
+        print(f"Request completed in {process_time:.4f}s with status {response.status_code}")
+        return response
+    except Exception as e:
+        process_time = time.time() - start_time
+        print(f"Request failed after {process_time:.4f}s with error: {e}")
+        raise
 
 # Allow dev Vite server origin. In production, restrict this.
 app.add_middleware(
@@ -69,22 +103,95 @@ def parse_directory_recursive(base_path: Path) -> Dict[str, Any]:
     return build_tree(base_path)
 
 
-def extract_files_from_uploads(upload_files: List[UploadFile]) -> Path:
-    """Save uploaded files to temporary directory, preserving folder structure."""
-    temp_dir = Path(tempfile.mkdtemp())
+def extract_files_from_uploads(upload_files) -> Path:
+    """Save uploaded files to persistent directory, preserving folder structure."""
+    # Create uploads directory if it doesn't exist
+    uploads_dir = Path(__file__).parent.parent / "uploads"
+    uploads_dir.mkdir(exist_ok=True)
     
-    for upload_file in upload_files:
+    # Create a unique subdirectory for this upload
+    import datetime
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    upload_dir = uploads_dir / f"upload_{timestamp}"
+    upload_dir.mkdir(exist_ok=True)
+    
+    print(f"Saving files to persistent directory: {upload_dir}")
+    
+    for i, upload_file in enumerate(upload_files):
         if not upload_file.filename:
+            print(f"Skipping file {i} with no filename")
             continue
             
-        # Preserve the folder structure from the filename/path
-        file_path = temp_dir / upload_file.filename
-        file_path.parent.mkdir(parents=True, exist_ok=True)
+        # Read file content
+        try:
+            file_content = upload_file.file.read()
+            file_size = len(file_content)
+            
+            # Skip very large files (>50MB per file)
+            if file_size > 50 * 1024 * 1024:  # 50MB
+                print(f"Skipping large file: {upload_file.filename} ({file_size} bytes)")
+                continue
+                
+            print(f"Processing file {i}: {upload_file.filename} ({file_size} bytes)")
+        except Exception as e:
+            print(f"Error reading file {upload_file.filename}: {e}")
+            continue
         
-        with open(file_path, 'wb') as f:
-            shutil.copyfileobj(upload_file.file, f)
+        # Preserve the folder structure from the filename/path
+        file_path = upload_dir / upload_file.filename
+        
+        # Ensure parent directories exist
+        try:
+            file_path.parent.mkdir(parents=True, exist_ok=True)
+        except Exception as e:
+            print(f"Error creating directory {file_path.parent}: {e}")
+            continue
+        
+        # Write file content
+        try:
+            with open(file_path, 'wb') as f:
+                f.write(file_content)
+            print(f"Successfully wrote file: {file_path}")
+        except Exception as e:
+            print(f"Error writing file {file_path}: {e}")
+            continue
     
-    return temp_dir
+    return upload_dir
+
+
+@router.post("/debug-upload")
+async def debug_upload(files: List[UploadFile] = File(...)):
+    """Debug endpoint to see exactly what files are being uploaded."""
+    print(f"\n=== DEBUG UPLOAD ===")
+    print(f"Number of files: {len(files) if files else 0}")
+    
+    if not files:
+        return {"error": "No files received", "files": []}
+    
+    file_info = []
+    for i, file in enumerate(files):
+        info = {
+            "index": i,
+            "filename": file.filename,
+            "content_type": file.content_type,
+            "headers": dict(file.headers) if hasattr(file, 'headers') else {},
+        }
+        
+        try:
+            # Try to read first 50 bytes to check if file is readable
+            content_sample = await file.read(50)
+            await file.seek(0)  # Reset file pointer
+            info["readable"] = True
+            info["sample_size"] = len(content_sample)
+            info["sample_content"] = content_sample.decode('utf-8', errors='ignore')[:50]
+        except Exception as e:
+            info["readable"] = False
+            info["error"] = str(e)
+        
+        file_info.append(info)
+        print(f"File {i}: {info}")
+    
+    return {"files": file_info}
 
 
 @router.post("/test-upload")
@@ -97,39 +204,142 @@ async def test_upload(files: List[UploadFile] = File(...)):
 
 
 @router.post("/upload")
-async def upload_files(files: List[UploadFile] = File(...)):
+async def upload_files(request: Request):
     """Upload and parse files/folders, returning directory tree with file type analysis."""
-    print(f"Received {len(files) if files else 0} files")
-    for i, file in enumerate(files):
-        print(f"File {i}: {file.filename}, size: {file.size if hasattr(file, 'size') else 'unknown'}")
+    print(f"\n=== UPLOAD START ===")
     
-    if not files:
-        raise HTTPException(status_code=400, detail="No files uploaded")
-    
-    temp_path = None
     try:
-        # Save files to temporary directory
-        temp_path = extract_files_from_uploads(files)
+        # Parse the multipart form data manually with increased limits
+        from starlette.formparsers import MultiPartParser
+        from starlette.datastructures import FormData
         
-        # Parse the directory structure
-        tree = parse_directory_recursive(temp_path)
+        # Create a custom parser with higher limits
+        content_type = request.headers.get('content-type', '')
+        if not content_type.startswith('multipart/form-data'):
+            raise HTTPException(status_code=400, detail="Must be multipart/form-data")
         
-        return {
-            "success": True,
-            "file_count": len(files),
-            "tree": tree
-        }
+        parser = MultiPartParser(
+            headers=request.headers,
+            stream=request.stream(),
+            max_files=50000,  # Allow up to 50,000 files
+            max_fields=50000  # Allow up to 50,000 form fields
+        )
         
+        form_data = await parser.parse()
+        form = FormData(form_data)
+        print(f"Form keys: {list(form.keys())}")
+        
+        # Get all files from the form
+        files = []
+        for key in form.keys():
+            values = form.getlist(key)
+            for value in values:
+                if hasattr(value, 'filename') and value.filename:
+                    files.append(value)
+                    if len(files) <= 5:  # Only log first 5 files to avoid spam
+                        print(f"Found file: {value.filename}")
+        
+        if len(files) > 5:
+            print(f"... and {len(files) - 5} more files (total: {len(files)})")
+        
+        if not files:
+            print("ERROR: No files found in form data")
+            raise HTTPException(status_code=400, detail="No files uploaded")
+        
+        print(f"Valid files: {len(files)}")
+        
+        # Process all files - no limit (use with caution for large uploads)
+        print(f"Processing {len(files)} files...")
+        
+        temp_path = None
+        try:
+            # Save files to persistent directory
+            upload_path = extract_files_from_uploads(files)
+            
+            # Parse the directory structure
+            tree = parse_directory_recursive(upload_path)
+            
+            print(f"=== UPLOAD SUCCESS ===")
+            return {
+                "success": True,
+                "file_count": len(files),
+                "upload_path": str(upload_path),
+                "tree": tree
+            }
+            
+        except Exception as e:
+            # Don't delete files on error - keep them for debugging
+            print(f"Error during processing: {e}")
+            raise
+                
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"Error processing upload: {str(e)}")
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Error processing upload: {str(e)}")
+@router.get("/uploads")
+async def list_uploads():
+    """List all uploaded folders."""
+    uploads_dir = Path(__file__).parent.parent / "uploads"
+    if not uploads_dir.exists():
+        return {"uploads": []}
     
-    finally:
-        # Cleanup temporary files
-        if temp_path and temp_path.exists():
-            shutil.rmtree(temp_path, ignore_errors=True)
+    uploads = []
+    for upload_dir in uploads_dir.iterdir():
+        if upload_dir.is_dir():
+            # Get basic info about the upload
+            stat = upload_dir.stat()
+            uploads.append({
+                "name": upload_dir.name,
+                "path": str(upload_dir),
+                "created": stat.st_ctime,
+                "size_mb": sum(f.stat().st_size for f in upload_dir.rglob('*') if f.is_file()) / (1024*1024)
+            })
+    
+    # Sort by creation time (newest first)
+    uploads.sort(key=lambda x: x["created"], reverse=True)
+    return {"uploads": uploads}
+
+
+@router.delete("/uploads/{upload_name}")
+async def delete_upload(upload_name: str):
+    """Delete a specific uploaded folder."""
+    uploads_dir = Path(__file__).parent.parent / "uploads"
+    upload_path = uploads_dir / upload_name
+    
+    if not upload_path.exists() or not upload_path.is_dir():
+        raise HTTPException(status_code=404, detail="Upload not found")
+    
+    try:
+        shutil.rmtree(upload_path)
+        return {"success": True, "message": f"Deleted upload: {upload_name}"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error deleting upload: {str(e)}")
+
+
+@router.post("/uploads/cleanup")
+async def cleanup_old_uploads(days_old: int = 7):
+    """Delete uploads older than specified days."""
+    uploads_dir = Path(__file__).parent.parent / "uploads"
+    if not uploads_dir.exists():
+        return {"deleted": 0, "message": "No uploads directory"}
+    
+    import time
+    cutoff_time = time.time() - (days_old * 24 * 60 * 60)
+    deleted = 0
+    
+    for upload_dir in uploads_dir.iterdir():
+        if upload_dir.is_dir() and upload_dir.stat().st_ctime < cutoff_time:
+            try:
+                shutil.rmtree(upload_dir)
+                deleted += 1
+                print(f"Deleted old upload: {upload_dir.name}")
+            except Exception as e:
+                print(f"Error deleting {upload_dir.name}: {e}")
+    
+    return {"deleted": deleted, "message": f"Cleaned up uploads older than {days_old} days"}
 
 
 @router.get("/health")

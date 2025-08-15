@@ -80,6 +80,7 @@ export default function FolderDropzone() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [dragActive, setDragActive] = useState(false);
+  const [uploadInfo, setUploadInfo] = useState(null);
 
   const handleFilesUpload = useCallback(async (files) => {
     if (!files || files.length === 0) return;
@@ -89,6 +90,7 @@ export default function FolderDropzone() {
 
     setLoading(true);
     setError("");
+    setUploadInfo(null);
 
     const formData = new FormData();
     files.forEach(file => {
@@ -109,16 +111,31 @@ export default function FolderDropzone() {
       });
 
       console.log('Response status:', response.status, response.statusText);
+      console.log('Response headers:', Object.fromEntries(response.headers.entries()));
 
       if (!response.ok) {
-        const errorText = await response.text();
+        let errorText;
+        try {
+          // Try to parse as JSON first
+          const errorJson = await response.json();
+          errorText = errorJson.detail || errorJson.message || JSON.stringify(errorJson);
+        } catch {
+          // Fall back to text if not JSON
+          errorText = await response.text();
+        }
         console.log('Error response:', errorText);
-        throw new Error(`Upload failed: ${response.statusText}`);
+        throw new Error(`Upload failed (${response.status}): ${errorText}`);
       }
 
       const result = await response.json();
       console.log('Upload successful:', result);
       setTree(result.tree);
+      
+      // Store upload info for display
+      setUploadInfo({
+        path: result.upload_path,
+        fileCount: result.file_count
+      });
     } catch (err) {
       console.error('Upload error:', err);
       setError(`Failed to upload and parse files: ${err.message}`);
@@ -211,6 +228,15 @@ export default function FolderDropzone() {
       </div>
 
       {error && <p className="mt-4 text-sm text-red-600">{error}</p>}
+
+      {uploadInfo && (
+        <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded">
+          <h3 className="text-sm font-medium text-green-800">Upload Successful!</h3>
+          <p className="text-sm text-green-700 mt-1">
+            {uploadInfo.fileCount} files saved to: <code className="bg-green-100 px-1 rounded text-xs">{uploadInfo.path}</code>
+          </p>
+        </div>
+      )}
 
       {hasData && (
         <div className="mt-6">
