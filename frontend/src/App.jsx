@@ -42,30 +42,31 @@ export default function App() {
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
-      <div className="max-w-6xl mx-auto py-10 px-4">
+    <div className="min-h-screen bg-gray-50 text-gray-800">
+      <div className="max-w-6xl mx-auto py-12 px-4">
         <div className="flex justify-between items-center mb-8 animate-fade-in">
           <div>
-            <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+            <h1 className="flex items-center text-4xl font-semibold text-gray-900 tracking-tight">
               Curate
+              <span className="ml-2 inline-block h-3 w-3 rounded-full bg-indigo-500"></span>
             </h1>
             <div className="flex items-center mt-2 text-gray-600">
               <span>AI-Powered Dataset Training</span>
               <span className="mx-2">•</span>
               <span className="flex items-center gap-2">
-                Backend: 
+                Backend:
                 <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
-                  status === 'healthy' 
-                    ? 'bg-green-100 text-green-800' 
-                    : status === 'loading' 
-                    ? 'bg-yellow-100 text-yellow-800' 
+                  status === 'healthy'
+                    ? 'bg-green-100 text-green-800'
+                    : status === 'loading'
+                    ? 'bg-yellow-100 text-yellow-800'
                     : 'bg-red-100 text-red-800'
                 }`}>
                   <div className={`w-2 h-2 rounded-full ${
-                    status === 'healthy' 
-                      ? 'bg-green-500 animate-pulse' 
-                      : status === 'loading' 
-                      ? 'bg-yellow-500 animate-pulse' 
+                    status === 'healthy'
+                      ? 'bg-green-500 animate-pulse'
+                      : status === 'loading'
+                      ? 'bg-yellow-500 animate-pulse'
                       : 'bg-red-500'
                   }`}></div>
                   {status}
@@ -73,7 +74,7 @@ export default function App() {
               </span>
             </div>
           </div>
-          
+
           {(showChat || activeTab !== "upload") && (
             <button
               onClick={handleNewUpload}
