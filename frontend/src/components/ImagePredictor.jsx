@@ -16,7 +16,7 @@ const ImagePredictor = () => {
 
   const fetchAvailableModels = async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/ml/models');
+      const response = await fetch('/api/ml/models');
       const data = await response.json();
       
       if (data.success && data.models) {
@@ -61,7 +61,7 @@ const ImagePredictor = () => {
       const formData = new FormData();
       formData.append('file', selectedFile);
 
-      const response = await fetch(`http://localhost:8000/api/ml/predict?model_name=${encodeURIComponent(selectedModel)}`, {
+      const response = await fetch(`/api/ml/predict?model_name=${encodeURIComponent(selectedModel)}`, {
         method: 'POST',
         body: formData,
       });
