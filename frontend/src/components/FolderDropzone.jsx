@@ -75,7 +75,7 @@ function renderTree(node, basePath = "") {
   );
 }
 
-export default function FolderDropzone() {
+export default function FolderDropzone({ onUploadComplete }) {
   const [tree, setTree] = useState(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -132,10 +132,17 @@ export default function FolderDropzone() {
       setTree(result.tree);
       
       // Store upload info for display
-      setUploadInfo({
-        path: result.upload_path,
-        fileCount: result.file_count
-      });
+      const uploadData = {
+        upload_path: result.upload_path,
+        file_count: result.file_count,
+        tree: result.tree
+      };
+      setUploadInfo(uploadData);
+      
+      // Call the callback to notify parent component
+      if (onUploadComplete) {
+        onUploadComplete(uploadData);
+      }
     } catch (err) {
       console.error('Upload error:', err);
       setError(`Failed to upload and parse files: ${err.message}`);
@@ -233,7 +240,7 @@ export default function FolderDropzone() {
         <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded">
           <h3 className="text-sm font-medium text-green-800">Upload Successful!</h3>
           <p className="text-sm text-green-700 mt-1">
-            {uploadInfo.fileCount} files saved to: <code className="bg-green-100 px-1 rounded text-xs">{uploadInfo.path}</code>
+            {uploadInfo.file_count} files saved to: <code className="bg-green-100 px-1 rounded text-xs">{uploadInfo.upload_path}</code>
           </p>
         </div>
       )}

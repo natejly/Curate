@@ -1,11 +1,25 @@
 from fastapi import FastAPI, APIRouter, UploadFile, File, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 import tempfile
 import shutil
 from pathlib import Path
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 from collections import defaultdict
 import time
+
+# Import our services
+from .ai_service import AIAnalysisService
+from .ml_service import ModelTrainingService
+
+# Pydantic models
+class ChatRequest(BaseModel):
+    message: str
+    upload_path: str
+
+class TrainingRequest(BaseModel):
+    upload_path: str
+    ml_plan: Dict[str, Any]
 
 app = FastAPI(title="Curate Backend (skeleton)")
 
@@ -345,6 +359,141 @@ async def cleanup_old_uploads(days_old: int = 7):
 @router.get("/health")
 async def health():
     return {"status": "ok"}
+
+
+@router.post("/ai/analyze")
+async def analyze_dataset(request: ChatRequest):
+    """Analyze uploaded dataset and generate ML training plan."""
+    try:
+        upload_path = Path(request.upload_path)
+        if not upload_path.exists():
+            raise HTTPException(status_code=404, detail="Upload path not found")
+        
+        ai_service = AIAnalysisService()
+        analysis = ai_service.analyze_directory(upload_path, request.message)
+        
+        return {
+            "success": True,
+            "analysis": analysis
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error analyzing dataset: {str(e)}")
+
+
+@router.post("/ml/train")
+async def train_model(request: TrainingRequest):
+    """Train a machine learning model based on the analysis plan."""
+    try:
+        upload_path = Path(request.upload_path)
+        if not upload_path.exists():
+            raise HTTPException(status_code=404, detail="Upload path not found")
+        
+        ml_service = ModelTrainingService(upload_path)
+        
+        # Determine model type and train accordingly
+        model_type = request.ml_plan.get("model_type", "image_classification")
+        
+        if model_type == "image_classification":
+            result = ml_service.train_image_classification_model(request.ml_plan)
+        elif model_type == "text_classification":
+            result = ml_service.train_text_classification_model(request.ml_plan)
+        else:
+            raise HTTPException(status_code=400, detail=f"Unsupported model type: {model_type}")
+        
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error training model: {str(e)}")
+
+
+@router.get("/ml/status")
+async def get_training_status():
+    """Get the status of model training."""
+    try:
+        ml_service = ModelTrainingService(Path("."))  # Just for status check
+        status = ml_service.get_training_status()
+        return {"success": True, "status": status}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error getting training status: {str(e)}")
+
+
+@router.get("/models")
+async def list_models():
+    """List all trained models."""
+    try:
+        models_dir = Path("models")
+        if not models_dir.exists():
+            return {"models": []}
+        
+        models = []
+        for model_file in models_dir.glob("*.h5"):
+            metadata_file = models_dir / f"{model_file.stem}_metadata.json"
+            metadata = {}
+            
+            if metadata_file.exists():
+                import json
+                with open(metadata_file, 'r') as f:
+                    metadata = json.load(f)
+            
+            models.append({
+                "name": model_file.stem,
+                "path": str(model_file),
+                "metadata": metadata
+            })
+        
+        return {"models": models}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error listing models: {str(e)}")
+
+
+@router.get("/ml/models")
+async def get_available_models():
+    """Get list of available trained models with metadata."""
+    try:
+        ml_service = ModelTrainingService(Path("."))  # Just for getting models
+        result = ml_service.get_available_models()
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error getting models: {str(e)}")
+
+
+@router.post("/ml/predict")
+async def predict_image(file: UploadFile = File(...), model_name: str = ""):
+    """Predict a single image using a trained model."""
+    try:
+        if not model_name:
+            raise HTTPException(status_code=400, detail="Model name is required")
+        
+        # Validate file type
+        if not file.content_type or not file.content_type.startswith('image/'):
+            raise HTTPException(status_code=400, detail="File must be an image")
+        
+        # Create temporary file for the uploaded image
+        temp_dir = Path("temp_inference")
+        temp_dir.mkdir(exist_ok=True)
+        
+        # Save uploaded file temporarily
+        temp_file = temp_dir / f"temp_image_{int(time.time())}{Path(file.filename).suffix}"
+        
+        try:
+            with open(temp_file, "wb") as buffer:
+                content = await file.read()
+                buffer.write(content)
+            
+            # Create ML service and make prediction
+            ml_service = ModelTrainingService(Path("."))  # Just for prediction
+            result = ml_service.predict_image(temp_file, model_name)
+            
+            return result
+            
+        finally:
+            # Cleanup temp file
+            if temp_file.exists():
+                temp_file.unlink()
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error predicting image: {str(e)}")
 
 
 app.include_router(router)
