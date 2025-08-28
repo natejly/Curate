@@ -131,12 +131,29 @@ class ImgClassTrainer:
         )
         return history
 
+    def evaluate_test(self):
+        """Evaluate the trained model on the test set and return metrics."""
+        if self.test_ds is None:
+            self.build_datasets()
+        if self.model is None:
+            self.build()
+            self.compile_stage1()
+        print("\n=== EVALUATE: Test set ===")
+        results = self.model.evaluate(self.test_ds, verbose=1)
+        metrics = dict(zip(self.model.metrics_names, [float(r) for r in results]))
+        print(f"Test results: {metrics}")
+        return metrics
+
     def run(self):
         self.build_datasets()
         self.build()
         self.compile_stage1()
         return self.train_stage1(epochs=5)
+    
+    def evaluate(self):
+        return self.evaluate_test()
 
 if __name__ == "__main__":
     trainer = ImgClassTrainer("/Users/natejly/Desktop/PetImages")
     trainer.run()
+    trainer.evaluate()
