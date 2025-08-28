@@ -1,1 +1,3 @@
-LLM decides model, batch, lr, epochs, dual train
+#Curate
+
+TODO: fix prompts, figure out what LLM should control

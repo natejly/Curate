@@ -15,9 +15,12 @@ class ImgClassTrainer:
                  fine_tune_learning_rate: float = 1e-5,
                  initial_epochs: int = 10,
                  fine_tune_epochs: int = 10,
-                 dual_stage: bool = True):
+                 dual_stage: bool = True,
+                 custom_img_size: tuple = None,
+                 unfreeze_percent: float = 0.5):
         # Data source
-        self.parser = ImgClassData(dataset_path, debug=True)
+        self.parser = ImgClassData(dataset_path, debug=False)
+        self.file_tree = self.parser.json_tree
         self.filepath = self.parser.filepath
         self.img_dims = self.parser.IMSIZE
         self.train_dir = self.parser.train_dir
@@ -32,12 +35,19 @@ class ImgClassTrainer:
         self.initial_epochs = initial_epochs
         self.fine_tune_epochs = fine_tune_epochs
         self.dual_stage = dual_stage
+        self.custom_img_size = custom_img_size
+        self.unfreeze_percent = unfreeze_percent
 
         # Derived
-        self.IMG_SIZE = self.bucket_dims(self.img_dims)
+        # Use custom image size if provided, otherwise use bucketed dims
+        if custom_img_size:
+            # Ensure IMG_SIZE is always a tuple for concatenation operations
+            self.IMG_SIZE = tuple(custom_img_size) if isinstance(custom_img_size, (list, tuple)) else custom_img_size
+        else:
+            self.IMG_SIZE = self.bucket_dims(self.img_dims)
         self.NUM_CLASSES = len(self.parser.classes)
-        print("Detected classes:", self.parser.classes)
-        print("Using image size:", self.IMG_SIZE)
+        # print("Detected classes:", self.parser.classes)
+        # print("Using image size:", self.IMG_SIZE)
 
         # Placeholders
         self.AUTOTUNE = tf.data.AUTOTUNE
@@ -60,7 +70,9 @@ class ImgClassTrainer:
                     fine_tune_learning_rate: float,
                     initial_epochs: int,
                     fine_tune_epochs: int,
-                    dual_stage: bool = None):
+                    dual_stage: bool = None,
+                    custom_img_size: tuple = None,
+                    unfreeze_percent: float = None):
         
         self.base_model_name = base_model_name
         self.batch_size = batch_size
@@ -70,6 +82,11 @@ class ImgClassTrainer:
         self.fine_tune_epochs = fine_tune_epochs
         if dual_stage is not None:
             self.dual_stage = dual_stage
+        if custom_img_size is not None:
+            self.custom_img_size = custom_img_size
+            self.IMG_SIZE = custom_img_size
+        if unfreeze_percent is not None:
+            self.unfreeze_percent = unfreeze_percent
 
     @staticmethod
     def get_classes_from_train(train_dir: str) -> list:
@@ -189,9 +206,10 @@ class ImgClassTrainer:
         # Unfreeze the base model
         self.base_model.trainable = True
         
-        # Optionally freeze bottom layers and only fine-tune top layers
-        # This is more stable than unfreezing everything at once
-        fine_tune_at = len(self.base_model.layers) // 2  # Unfreeze top half of layers
+        # Calculate how many layers to freeze based on unfreeze_percent
+        total_layers = len(self.base_model.layers)
+        layers_to_unfreeze = int(total_layers * self.unfreeze_percent)
+        fine_tune_at = total_layers - layers_to_unfreeze
         
         # Freeze all layers up to fine_tune_at
         for layer in self.base_model.layers[:fine_tune_at]:
@@ -218,7 +236,7 @@ class ImgClassTrainer:
         callbacks_stage2 = [
             tf.keras.callbacks.EarlyStopping(
                 monitor="val_loss",
-                patience=3,
+                patience=5,
                 restore_best_weights=True,
                 verbose=1
             ),
@@ -273,6 +291,8 @@ class ImgClassTrainer:
             "initial_epochs": self.initial_epochs,
             "dual_stage": self.dual_stage,
             "img_size": self.IMG_SIZE,
+            "custom_img_size": self.custom_img_size,
+            "unfreeze_percent": self.unfreeze_percent,
         }
         
         # Only include fine-tuning parameters if dual_stage is True
@@ -295,7 +315,6 @@ class ImgClassTrainer:
         
         # Log training results
         self.log_training_results()
-        self.save_training_log()
         
     def run_full_training(self):
         """Run complete two-stage training process."""
@@ -316,7 +335,6 @@ class ImgClassTrainer:
         
         # Log training results
         self.log_training_results()
-        self.save_training_log()
         
         print("\n=== TRAINING COMPLETE ===")
         print("Stage 1 (frozen) + Stage 2 (fine-tuning) completed successfully!")
