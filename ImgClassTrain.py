@@ -45,6 +45,7 @@ class ImgClassTrainer:
 
     @staticmethod
     def bucket_dims(img_dims):
+        #TODO: Fix bucketing 
         
         if img_dims[0] < 128:
             dim = max(32, max(img_dims[0], img_dims[1]))
