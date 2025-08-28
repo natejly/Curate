@@ -10,25 +10,27 @@ class ImgClassTrainer:
                  base_model_name: str = "EfficientNetB0",
                  batch_size: int = 64,
                  initial_learning_rate: float = 1e-3,
-                 fine_tune_learning_rate: float = 1e-5):
+                 fine_tune_learning_rate: float = 1e-5,
+                 initial_epochs: int = 10):
         # Data source
         self.parser = ImgClassData(dataset_path, debug=True)
         self.filepath = self.parser.filepath
         self.img_dims = self.parser.IMSIZE
-        self.train_dir = os.path.join(self.filepath, "train")
-        self.val_dir = os.path.join(self.filepath, "val")
-        self.test_dir = os.path.join(self.filepath, "test")
+        self.train_dir = self.parser.train_dir
+        self.val_dir = self.parser.val_dir
+        self.test_dir = self.parser.test_dir
 
         # Config
         self.base_model_name = base_model_name
         self.batch_size = batch_size
         self.initial_learning_rate = initial_learning_rate
         self.fine_tune_learning_rate = fine_tune_learning_rate
+        self.initial_epochs = initial_epochs
 
         # Derived
         self.IMG_SIZE = self.bucket_dims(self.img_dims)
-        self.NUM_CLASSES = self.get_classes_from_train(self.train_dir)
-        print("Detected classes:", self.NUM_CLASSES)
+        self.NUM_CLASSES = len(self.parser.classes)
+        print("Detected classes:", self.parser.classes)
         print("Using image size:", self.IMG_SIZE)
 
         # Placeholders
@@ -40,8 +42,8 @@ class ImgClassTrainer:
         self.test_ds = None
 
     @staticmethod
-    def get_classes_from_train(train_dir: str) -> int:
-        return len([d.name for d in os.scandir(train_dir) if d.is_dir()])
+    def get_classes_from_train(train_dir: str) -> list:
+        return ([d.name for d in os.scandir(train_dir) if d.is_dir()])
 
     @staticmethod
     def bucket_dims(img_dims):
@@ -114,7 +116,7 @@ class ImgClassTrainer:
             metrics=["accuracy"]
         )
 
-    def train_stage1(self, epochs: int = 10):
+    def train_stage1(self=):
         callbacks_stage1 = [
             tf.keras.callbacks.EarlyStopping(
                 monitor="val_loss",
@@ -125,7 +127,7 @@ class ImgClassTrainer:
         history = self.model.fit(
             self.train_ds,
             validation_data=self.val_ds,
-            epochs=epochs,
+            epochs=self.initial_epochs,
             callbacks=callbacks_stage1,
             verbose=1
         )

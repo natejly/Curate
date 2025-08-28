@@ -44,6 +44,7 @@ class ImgClassData:
         self.val_dir = os.path.dirname(val_folders[0]) if val_folders else None
         self.test_dir = os.path.dirname(test_folders[0]) if test_folders else None
         self.classes = [(os.path.basename(folder)) for folder in train_folders] if train_folders else []
+        
         if debug:
             print(f"Image size: {self.IMSIZE}")
             print(f"Train folders: {self.train_folders}")
