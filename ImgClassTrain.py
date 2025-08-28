@@ -84,7 +84,8 @@ class ImgClassTrainer:
             self.dual_stage = dual_stage
         if custom_img_size is not None:
             self.custom_img_size = custom_img_size
-            self.IMG_SIZE = custom_img_size
+            # Ensure IMG_SIZE is always a tuple for concatenation operations
+            self.IMG_SIZE = tuple(custom_img_size) if isinstance(custom_img_size, (list, tuple)) else custom_img_size
         if unfreeze_percent is not None:
             self.unfreeze_percent = unfreeze_percent
 

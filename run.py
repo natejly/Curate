@@ -6,6 +6,7 @@ import re
 from dotenv import load_dotenv
 from ImgClassTrain import ImgClassTrainer
 from ImgClassData import ImgClassData
+from Prompts.training_prompts import get_initial_parameter_prompt, get_feedback_prompt
 
 # Load environment variables from .env file
 load_dotenv()
@@ -40,51 +41,8 @@ print(f"   Image Size: {data_parser.IMSIZE}")
 print(f"   Classes: {data_parser.classes}")
 print(f"   Number of Classes: {len(data_parser.classes)}")
 
-# Create query for GPT-4o
-llm_query = f"""
-Given this image classification dataset analysis, recommend optimal training parameters for ImgClassTrainer:
-
-Dataset Info:
-- Task: {dataset_info['prompt']}
-- Image Size: {dataset_info['img_size']}
-- Number of Classes: {dataset_info['num_classes']}
-- Classes: {dataset_info['classes']}
-- File Tree Structure: {json.dumps(dataset_info['file_tree'], indent=2)}
-- Dataset Splits: {json.dumps(dataset_info['dataset_splits'], indent=2)}
-
-Please recommend parameters for:
-1. base_model_name (EfficientNetB0, EfficientNetB1, etc.)
-2. batch_size
-3. initial_learning_rate
-4. fine_tune_learning_rate
-5. initial_epochs
-6. fine_tune_epochs
-7. dual_stage 
-8. custom_img_size 
-9. unfreeze_percent
-
-Please provide your response in the following format:
-
-EXPLANATION:
-[Explain your parameter choices based on the dataset characteristics, task complexity, and optimal training strategy.]
-
-PARAMETERS:
-[Return ONLY a valid Python dictionary with these parameters:]
-- base_model_name (string: EfficientNetB0, EfficientNetB1, etc.)
-- batch_size (integer)
-- initial_learning_rate (float)
-- fine_tune_learning_rate (float)
-- initial_epochs (integer)
-- fine_tune_epochs (integer)
-- dual_stage (boolean: True for two-stage, False for single-stage)
-- custom_img_size (list: [height, width] or None for auto-bucketing)
-- unfreeze_percent (float: 0.0-1.0, percentage of top layers to unfreeze)
-
-IMPORTANT: Use Python syntax (True/False not true/false, None not null, numbers without quotes)
-
-
-Consider the dataset size, image dimensions, and task complexity.
-"""
+# Create query for GPT-4o using imported prompt function
+llm_query = get_initial_parameter_prompt(dataset_info)
 
 # Get OpenAI API key from environment
 api_key = os.getenv('OPENAI_API_KEY')
@@ -204,47 +162,14 @@ while iteration <= max_iterations:
         # Prepare training log for LLM analysis
         training_log = trainer_single.training_log.getLog()
         
-        # Create feedback query for LLM
-        feedback_query = f"""
-Based on this training result, recommend improved parameters to achieve better accuracy (target: {target_accuracy*100}%).
-
-Current Results:
-- Final Test Accuracy: {final_accuracy:.4f} ({final_accuracy*100:.2f}%)
-- Training Log: {json.dumps(training_log, indent=2)}
-- Current Parameters: {json.dumps(trainer_single.getParams(), indent=2)}
-
-Analysis Request:
-1. Analyze what went wrong or could be improved
-2. Suggest specific parameter changes to improve accuracy
-3. Consider: learning rates, batch size, epochs, model architecture, training strategy
-4. IMPORTANT: Consider image size optimization:
-   - Use None for custom_img_size to enable auto-bucketing (recommended for most cases)
-   - Larger images improve accuracy but increase training time and memory usage
-
-Please provide your response in the following format:
-
-EXPLANATION:
-[Explain what you observed from the training results, what issues you identified, and why you're making specific changes. Be detailed about your reasoning.]
-
-PARAMETERS:
-[Return ONLY a valid Python dictionary with ONLY these allowed parameters:]
-- base_model_name (EfficientNetB0, EfficientNetB1, etc.) THIS SHOULD ONLY BE CHANGED AS A LAST RESORT
-- batch_size (integer)
-- initial_learning_rate (float)
-- fine_tune_learning_rate (float)
-- initial_epochs (integer)
-- fine_tune_epochs (integer)
-- dual_stage (boolean)
-- custom_img_size (list: [height, width] or None for auto-bucketing)
-- unfreeze_percent (float 0.0-1.0)
-
-Do NOT include img_size, dataset_path, or any other parameters.
-
-IMPORTANT: Use Python syntax (True/False not true/false, None not null)
-Analyze the training results and recommend parameter changes that will improve accuracy.
-
-Focus on changes that will most likely improve accuracy based on the training history.
-"""
+        # Create feedback query for LLM using imported prompt function  
+        feedback_query = get_feedback_prompt(
+            final_accuracy=final_accuracy,
+            target_accuracy=target_accuracy, 
+            training_log=json.dumps(training_log, indent=2),
+            current_params=json.dumps(trainer_single.getParams(), indent=2),
+            user_task=prompt
+        )
 
         api_key = os.getenv('OPENAI_API_KEY')
         
@@ -317,12 +242,9 @@ Focus on changes that will most likely improve accuracy based on the training hi
                         print("  No parameter changes detected")
                     print("-" * 50)
                     
-                    # Create new trainer with improved parameters
-                    trainer_single = ImgClassTrainer(
-                        dataset_path=dataset_path,
-                        **valid_params
-                    )
-                    print(f"✅ New trainer created with improved parameters")
+                    # Update existing trainer parameters (preserves training history)
+                    trainer_single.edit_config(**valid_params)
+                    print(f"✅ Trainer parameters updated with improved values")
                     
                 else:
                     print("❌ Could not extract improved parameters from LLM response")
