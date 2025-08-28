@@ -275,6 +275,3 @@ class ImgClassData:
 
         return train_folders, val_folders, test_folders
 
-
-if __name__ == "__main__":
-    parser = ImgClassData("/Users/natejly/Desktop/PetImages", debug=True)

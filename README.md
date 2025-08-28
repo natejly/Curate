@@ -1,1 +1,1 @@
-# Curate
+LLM decides model, batch, lr, epochs, dual train
