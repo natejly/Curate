@@ -11,7 +11,7 @@ class ImgClassData:
     """
     Data Parser for Image Classification
     """
-    def __init__(self, filepath: str, train_ratio: float = 0.7, val_ratio: float = 0.15, test_ratio: float = 0.15):
+    def __init__(self, filepath: str, train_ratio: float = 0.7, val_ratio: float = 0.15, test_ratio: float = 0.15, debug = False):
         self.filepath = filepath
         
         # Get initial tree structure
@@ -43,7 +43,14 @@ class ImgClassData:
         self.train_dir = os.path.dirname(train_folders[0]) if train_folders else None
         self.val_dir = os.path.dirname(val_folders[0]) if val_folders else None
         self.test_dir = os.path.dirname(test_folders[0]) if test_folders else None
-
+        self.classes = [(os.path.basename(folder)) for folder in train_folders] if train_folders else []
+        if debug:
+            print(f"Image size: {self.IMSIZE}")
+            print(f"Train folders: {self.train_folders}")
+            print(f"Validation folders: {self.val_folders}")
+            print(f"Test folders: {self.test_folders}")
+            print(f"Classes: {self.classes}")
+            
     def parse(self):
         # Implement parsing logic here
         pass
@@ -269,14 +276,4 @@ class ImgClassData:
 
 
 if __name__ == "__main__":
-    parser = ImgClassData("/Users/natejly/Desktop/sorted_digits")
-
-    print(f"Image Size: {parser.IMSIZE}\n")
-    print(f"JSON Tree: {parser.json_tree}\n")
-    print(f"DS Split Tree: {parser.DS_split_tree}\n")
-    print(f"Train Folders: {parser.train_folders}\n")
-    print(f"Validation Folders: {parser.val_folders}\n")
-    print(f"Test Folders: {parser.test_folders}\n")
-    print(f"Train Dir: {parser.train_dir}\n")
-    print(f"Validation Dir: {parser.val_dir}\n")
-    print(f"Test Dir: {parser.test_dir}\n")
+    parser = ImgClassData("/Users/natejly/Desktop/PetImages", debug=True)
