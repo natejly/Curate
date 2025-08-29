@@ -4,6 +4,7 @@ import time
 import json
 import re
 import argparse
+from datetime import datetime
 from dotenv import load_dotenv
 from ImgClassTrain import ImgClassTrainer
 from ImgClassData import ImgClassData

@@ -189,6 +189,13 @@ class ImgClassTrainer:
                 patience=int(self.initial_epochs*.05),
                 min_lr=1e-7,
                 verbose=1
+            ),
+            tf.keras.callbacks.Checkpoint(
+                filepath=f'model1_checkpoint_{datetime.now().strftime("%Y%m%d_%H%M%S")}.h5',
+                save_best_only=True,
+                monitor='val_loss',
+                mode='min',
+                verbose=1
             )
         ]
         
@@ -249,6 +256,13 @@ class ImgClassTrainer:
                 factor=0.2,
                 patience=2,
                 min_lr=1e-8,
+                verbose=1
+            ),
+            tf.keras.callbacks.Checkpoint(
+                filepath=f'model2_checkpoint_{datetime.now().strftime("%Y%m%d_%H%M%S")}.h5',
+                save_best_only=True,
+                monitor='val_loss',
+                mode='min',
                 verbose=1
             )
         ]
