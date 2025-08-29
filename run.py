@@ -13,10 +13,10 @@ load_dotenv()
 
 
 # User prompt for the training task
-prompt = "I want to train a digits classifier"
+prompt = "train digits classifier"
 
 # Dataset path
-dataset_path = "/Users/natejly/Desktop/sorted_digits"
+dataset_path = "/Users/natejly/Desktop/sorted_digits_fast"
 
 # Initialize trainer variable
 trainer_single = None
@@ -113,7 +113,7 @@ if trainer_single is None:
 print(f"\n🎯 Initial Configuration Ready:")
 print(json.dumps(trainer_single.getParams(), indent=2))
 
-max_iterations = 5
+max_iterations = 10
 target_accuracy = 0.99
 iteration = 1
 
@@ -168,7 +168,8 @@ while iteration <= max_iterations:
             target_accuracy=target_accuracy, 
             training_log=json.dumps(training_log, indent=2),
             current_params=json.dumps(trainer_single.getParams(), indent=2),
-            user_task=prompt
+            user_task=prompt,
+            dataset_info=dataset_info
         )
 
         api_key = os.getenv('OPENAI_API_KEY')

@@ -98,7 +98,7 @@ class ImgClassTrainer:
         #TODO: Fix bucketing 
         
         if img_dims[0] < 128:
-            dim = max(32, max(img_dims[0], img_dims[1]))
+            dim = max(64, max(img_dims[0], img_dims[1]))
             return (dim, dim)
         if img_dims[0] < 256:
             return (128, 128)
