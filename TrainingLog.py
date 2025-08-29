@@ -41,4 +41,6 @@ class TrainingLog:
         return json.dumps(self.log)
     def show(self):
         print(self.json(pretty=True))
-    
+    def save(self, filepath=f'training_log{datetime.now().strftime("%Y%m%d_%H%M%S")}.json'):
+        with open(filepath, 'w') as f:
+            f.write(self.json())

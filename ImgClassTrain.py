@@ -162,7 +162,10 @@ class ImgClassTrainer:
         print(f"Frozen base model layers: {len(self.base_model.layers)}")
         
         self.model.compile(
-            optimizer=tf.keras.optimizers.Adam(self.initial_learning_rate),
+            optimizer = tf.keras.optimizers.AdamW(
+            learning_rate=self.initial_learning_rate,
+            weight_decay=1e-4   # typical value, tune for your task
+        ),
             loss="sparse_categorical_crossentropy",
             metrics=["accuracy"]
         )
@@ -176,14 +179,14 @@ class ImgClassTrainer:
         callbacks_stage1 = [
             tf.keras.callbacks.EarlyStopping(
                 monitor="val_loss",
-                patience=3,
+                patience=int(self.initial_epochs*.1),
                 restore_best_weights=True,
                 verbose=1
             ),
             tf.keras.callbacks.ReduceLROnPlateau(
                 monitor="val_loss",
                 factor=0.2,
-                patience=2,
+                patience=int(self.initial_epochs*.05),
                 min_lr=1e-7,
                 verbose=1
             )
