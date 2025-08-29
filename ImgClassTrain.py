@@ -190,8 +190,8 @@ class ImgClassTrainer:
                 min_lr=1e-7,
                 verbose=1
             ),
-            tf.keras.callbacks.Checkpoint(
-                filepath=f'model1_checkpoint_{datetime.now().strftime("%Y%m%d_%H%M%S")}.h5',
+            tf.keras.callbacks.ModelCheckpoint(
+                filepath=f'model1_checkpoint_{datetime.now().strftime("%Y%m%d_%H%M%S")}.keras',
                 save_best_only=True,
                 monitor='val_loss',
                 mode='min',
@@ -258,8 +258,8 @@ class ImgClassTrainer:
                 min_lr=1e-8,
                 verbose=1
             ),
-            tf.keras.callbacks.Checkpoint(
-                filepath=f'model2_checkpoint_{datetime.now().strftime("%Y%m%d_%H%M%S")}.h5',
+            tf.keras.callbacks.ModelCheckpoint(
+                filepath=f'model2_checkpoint_{datetime.now().strftime("%Y%m%d_%H%M%S")}.keras',
                 save_best_only=True,
                 monitor='val_loss',
                 mode='min',
