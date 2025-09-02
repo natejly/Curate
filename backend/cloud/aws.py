@@ -23,7 +23,7 @@ class AWSHelper:
             "repo": "https://github.com/natejly/curate.git",
             "branch": "main"
         }
-        self.entrypoint = "train.py"
+        self.entrypoint = "cloud/train.py"
         self.role = "arn:aws:iam::974703727033:role/SageMakerExecutionRole"
         self.s3_path = None
         self.base_job_name = "curate-job"
@@ -53,7 +53,7 @@ class AWSHelper:
         
         estimator = TensorFlow(
             entry_point=self.entrypoint,
-            source_dir="backend/cloud",  # Include all files in cloud directory
+            source_dir="backend",  # Include all files in cloud directory
             # dependencies are handled by requirements.txt in source_dir
             role=self.role,
             instance_count=instance_count,
