@@ -1,8 +1,14 @@
 "use client";
 import React, { useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 
 // Accepts only folder uploads
 export default function Home() {
+  const router = useRouter();
+  const [consoleLogs, setConsoleLogs] = useState<string>("");
+  const [showConsole, setShowConsole] = useState(false);
+  const [testResults, setTestResults] = useState<any | null>(null);
+  const [trainStatus, setTrainStatus] = useState<string>("");
   // Remove chatInput state
   // Removed LLM chat state
   const [lastSessionId, setLastSessionId] = useState<string | null>(null);
@@ -203,6 +209,41 @@ export default function Home() {
           <div className="mb-2">
             <span className="font-semibold">Test Images:</span> {datasetInfo.test_images ?? "-"}
           </div>
+          {/* Train button and status log */}
+          <button
+            className={`mt-6 px-6 py-2 rounded-lg font-bold shadow transition-colors duration-200 ${trainStatus === "Training started..." ? "bg-gray-400 text-gray-200 cursor-not-allowed" : "bg-blue-600 text-white hover:bg-blue-700"}`}
+            onClick={async () => {
+              if (trainStatus === "Training started...") return;
+              setTrainStatus("Training started...");
+              setShowConsole(true);
+              setConsoleLogs("");
+              setTestResults(null);
+              const sessionId = datasetInfo.session_id;
+              if (!sessionId) {
+                setTrainStatus("No session ID found for training.");
+                return;
+              }
+              // Navigate to training console page with sessionId
+              router.push(`/training-console?sessionId=${sessionId}`);
+            }}
+            disabled={trainStatus === "Training started..."}
+          >Train</button>
+          {showConsole && (
+            <div className="mt-6 w-full bg-black/80 border border-white/20 rounded-lg p-4 text-green-200 font-mono text-xs h-64 overflow-y-auto" style={{whiteSpace: 'pre-wrap'}}>
+              {consoleLogs || "Waiting for logs..."}
+            </div>
+          )}
+          {testResults && (
+            <div className="mt-4 w-full bg-white/10 border border-white/20 rounded-lg p-4 text-white">
+              <div className="font-bold mb-2">Test Results</div>
+              <pre className="whitespace-pre-wrap text-xs">{JSON.stringify(testResults, null, 2)}</pre>
+            </div>
+          )}
+          {trainStatus && (
+            <div className="mt-4 p-2 rounded bg-black/30 border border-white/10 text-white text-center">
+              {trainStatus}
+            </div>
+          )}
         </div>
       )}
     </div>

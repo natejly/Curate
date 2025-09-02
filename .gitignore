@@ -1,4 +1,12 @@
-# Curate App .gitignore
+# image files
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.bmp
+*.tiff
+
+
 
 # Environment and Configuration Files
 .env

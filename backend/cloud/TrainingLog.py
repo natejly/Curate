@@ -1,6 +1,10 @@
 import json
 from datetime import datetime
 import os
+import sys
+
+# Add backend root to sys.path for flexible imports
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 
 class TrainingLog:
     def __init__(self):
