@@ -19,14 +19,14 @@ export const metadata: Metadata = {
 
 function AppSidebar() {
   return (
-    <div className="w-64 bg-gray-900 text-white flex flex-col p-6 border-r border-gray-800 min-h-screen">
-      <div className="text-2xl font-bold mb-8">Curate</div>
+    <div className="w-64 bg-black text-white flex flex-col p-6 border-r border-gray-800 min-h-screen">
+      <div className="text-4xl font-extrabold mb-10 tracking-tight">Curate.</div>
       <nav className="flex flex-col gap-4">
         <a
           href="/"
           className="text-left px-2 py-2 rounded hover:bg-gray-800"
         >
-          Upload
+          Datasets
         </a>
         <a
           href="/training-console"

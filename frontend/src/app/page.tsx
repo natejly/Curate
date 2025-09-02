@@ -1,6 +1,7 @@
 "use client";
 import React, { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { AvailableDatasetsSection } from "./AvailableDatasetsSection";
 
 // Accepts only folder uploads
 export default function Home() {
@@ -120,21 +121,16 @@ export default function Home() {
   );
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-black">
-      <div className="w-full flex justify-center pt-8 pb-2">
-        <span className="text-3xl font-bold text-gray-100 tracking-tight">Curate.</span>
-      </div>
-      <div
-        className={`w-full max-w-md mx-auto p-8 rounded-2xl shadow-lg flex flex-col items-center justify-center border border-white/30 bg-black/60 backdrop-blur-lg transition-all duration-300 ${dragActive ? "border-white" : "border-white/30"}`}
-        onDragEnter={handleDrag}
-        onDragOver={handleDrag}
-        onDragLeave={handleDrag}
-        onDrop={handleDrop}
-      >
+    <div className="min-h-screen bg-black flex flex-col pt-20">
+      <div className="w-full max-w-xl mx-auto p-8 pt-10 rounded-2xl shadow-lg flex flex-col items-center justify-center border border-white/30 bg-black/60 backdrop-blur-lg transition-all duration-300">
         <div
-          className={`w-full h-48 flex flex-col items-center justify-center border-2 border-dashed rounded-xl transition-colors duration-200 ${dragActive ? "border-white bg-white/10" : "border-white/30 bg-white/5"}`}
+          className={`w-full h-48 flex flex-col items-center justify-center border-2 border-dashed rounded-xl transition-colors duration-200 pt-8 ${dragActive ? "border-white bg-white/10" : "border-white/30 bg-white/5"}`}
           onClick={() => inputRef.current?.click()}
           style={{ cursor: "pointer" }}
+          onDragEnter={handleDrag}
+          onDragOver={handleDrag}
+          onDragLeave={handleDrag}
+          onDrop={handleDrop}
         >
           <input
             type="file"
@@ -171,81 +167,79 @@ export default function Home() {
         >
           Upload complete!
         </div>
+        {errorMsg && (
+          <div className="w-full mt-8 p-4 rounded-xl bg-red-600 text-white text-center font-semibold">
+            {errorMsg}
+          </div>
+        )}
+        {datasetInfo && (
+          <div className="w-full mt-8 p-6 rounded-xl bg-white/10 border border-white/20 shadow text-white">
+            <div className="text-lg font-bold mb-4">Uploaded Dataset Info</div>
+            <div className="mb-2">
+              <span className="font-semibold">Task:</span> {datasetInfo.task ?? "-"}
+            </div>
+            <div className="mb-2">
+              <span className="font-semibold">Train Dir:</span> {datasetInfo.train_dir ? datasetInfo.train_dir.split('/').slice(-2).join('/') : "-"}
+            </div>
+            <div className="mb-2">
+              <span className="font-semibold">Val Dir:</span> {datasetInfo.val_dir ? datasetInfo.val_dir.split('/').slice(-2).join('/') : "-"}
+            </div>
+            <div className="mb-2">
+              <span className="font-semibold">Test Dir:</span> {datasetInfo.test_dir ? datasetInfo.test_dir.split('/').slice(-2).join('/') : "-"}
+            </div>
+            <div className="mb-2">
+              <span className="font-semibold">Classes:</span> {datasetInfo.classes && datasetInfo.classes.length > 0 ? [...datasetInfo.classes].sort().join(", ") : "-"}
+            </div>
+            <div className="mb-2">
+              <span className="font-semibold">Total Images:</span> {datasetInfo.total_images ?? "-"}
+            </div>
+            <div className="mb-2">
+              <span className="font-semibold">Train Images:</span> {datasetInfo.train_images ?? "-"}
+            </div>
+            <div className="mb-2">
+              <span className="font-semibold">Val Images:</span> {datasetInfo.val_images ?? "-"}
+            </div>
+            <div className="mb-2">
+              <span className="font-semibold">Test Images:</span> {datasetInfo.test_images ?? "-"}
+            </div>
+            <button
+              className={`mt-6 px-6 py-2 rounded-lg font-bold shadow transition-colors duration-200 ${trainStatus === "Training started..." ? "bg-gray-400 text-gray-200 cursor-not-allowed" : "bg-blue-600 text-white hover:bg-blue-700"}`}
+              onClick={async () => {
+                if (trainStatus === "Training started...") return;
+                setTrainStatus("Training started...");
+                setShowConsole(true);
+                setConsoleLogs("");
+                setTestResults(null);
+                const sessionId = datasetInfo.session_id;
+                if (!sessionId) {
+                  setTrainStatus("No session ID found for training.");
+                  return;
+                }
+                // Navigate to training console page with sessionId
+                router.push(`/training-console?sessionId=${sessionId}`);
+              }}
+              disabled={trainStatus === "Training started..."}
+            >Train</button>
+            {showConsole && (
+              <div className="mt-6 w-full bg-black/80 border border-white/20 rounded-lg p-4 text-green-200 font-mono text-xs h-64 overflow-y-auto" style={{whiteSpace: 'pre-wrap'}}>
+                {consoleLogs || "Waiting for logs..."}
+              </div>
+            )}
+            {testResults && (
+              <div className="mt-4 w-full bg-white/10 border border-white/20 rounded-lg p-4 text-white">
+                <div className="font-bold mb-2">Test Results</div>
+                <pre className="whitespace-pre-wrap text-xs">{JSON.stringify(testResults, null, 2)}</pre>
+              </div>
+            )}
+            {trainStatus && (
+              <div className="mt-4 p-2 rounded bg-black/30 border border-white/10 text-white text-center">
+                {trainStatus}
+              </div>
+            )}
+          </div>
+        )}
+        <AvailableDatasetsSection />
       </div>
-      {/* Show error message if dataset is invalid */}
-      {errorMsg && (
-        <div className="w-full max-w-md mt-8 p-4 rounded-xl bg-red-600 text-white text-center font-semibold">
-          {errorMsg}
-        </div>
-      )}
-      {/* Show dataset info after upload */}
-      {datasetInfo && (
-        <div className="w-full max-w-md mt-8 p-6 rounded-xl bg-white/10 border border-white/20 shadow text-white">
-          <div className="text-lg font-bold mb-4">Uploaded Dataset Info</div>
-          <div className="mb-2">
-            <span className="font-semibold">Task:</span> {datasetInfo.task ?? "-"}
-          </div>
-          <div className="mb-2">
-            <span className="font-semibold">Train Dir:</span> {datasetInfo.train_dir ? datasetInfo.train_dir.split('/').slice(-2).join('/') : "-"}
-          </div>
-          <div className="mb-2">
-            <span className="font-semibold">Val Dir:</span> {datasetInfo.val_dir ? datasetInfo.val_dir.split('/').slice(-2).join('/') : "-"}
-          </div>
-          <div className="mb-2">
-            <span className="font-semibold">Test Dir:</span> {datasetInfo.test_dir ? datasetInfo.test_dir.split('/').slice(-2).join('/') : "-"}
-          </div>
-          <div className="mb-2">
-            <span className="font-semibold">Classes:</span> {datasetInfo.classes && datasetInfo.classes.length > 0 ? [...datasetInfo.classes].sort().join(", ") : "-"}
-          </div>
-          <div className="mb-2">
-            <span className="font-semibold">Total Images:</span> {datasetInfo.total_images ?? "-"}
-          </div>
-          <div className="mb-2">
-            <span className="font-semibold">Train Images:</span> {datasetInfo.train_images ?? "-"}
-          </div>
-          <div className="mb-2">
-            <span className="font-semibold">Val Images:</span> {datasetInfo.val_images ?? "-"}
-          </div>
-          <div className="mb-2">
-            <span className="font-semibold">Test Images:</span> {datasetInfo.test_images ?? "-"}
-          </div>
-          {/* Train button and status log */}
-          <button
-            className={`mt-6 px-6 py-2 rounded-lg font-bold shadow transition-colors duration-200 ${trainStatus === "Training started..." ? "bg-gray-400 text-gray-200 cursor-not-allowed" : "bg-blue-600 text-white hover:bg-blue-700"}`}
-            onClick={async () => {
-              if (trainStatus === "Training started...") return;
-              setTrainStatus("Training started...");
-              setShowConsole(true);
-              setConsoleLogs("");
-              setTestResults(null);
-              const sessionId = datasetInfo.session_id;
-              if (!sessionId) {
-                setTrainStatus("No session ID found for training.");
-                return;
-              }
-              // Navigate to training console page with sessionId
-              router.push(`/training-console?sessionId=${sessionId}`);
-            }}
-            disabled={trainStatus === "Training started..."}
-          >Train</button>
-          {showConsole && (
-            <div className="mt-6 w-full bg-black/80 border border-white/20 rounded-lg p-4 text-green-200 font-mono text-xs h-64 overflow-y-auto" style={{whiteSpace: 'pre-wrap'}}>
-              {consoleLogs || "Waiting for logs..."}
-            </div>
-          )}
-          {testResults && (
-            <div className="mt-4 w-full bg-white/10 border border-white/20 rounded-lg p-4 text-white">
-              <div className="font-bold mb-2">Test Results</div>
-              <pre className="whitespace-pre-wrap text-xs">{JSON.stringify(testResults, null, 2)}</pre>
-            </div>
-          )}
-          {trainStatus && (
-            <div className="mt-4 p-2 rounded bg-black/30 border border-white/10 text-white text-center">
-              {trainStatus}
-            </div>
-          )}
-        </div>
-      )}
     </div>
   );
 }

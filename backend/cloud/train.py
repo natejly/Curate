@@ -57,6 +57,7 @@ def parse_args():
     parser.add_argument('--zip_s3_path', type=str, 
                        default="s3://curate-sagemaker-bucket-123456789012/curate/datasets/sorted_digits_fast.zip", 
                        help="S3 path to dataset zip file")
+    parser.add_argument('--session_id', type=str, default=None, help="Session ID for tracking (optional)")
     parser.add_argument('--extract_to', type=str, default="/opt/ml/input/data/train", 
                        help="Local path to extract dataset")
     parser.add_argument('--model_dir', type=str, default="/opt/ml/model", 

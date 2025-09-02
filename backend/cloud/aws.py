@@ -29,7 +29,7 @@ class AWSHelper:
         self.base_job_name = "curate-job"
     def set_base_job_name(self, name):
         self.base_job_name = name
-    def start_sagemaker_executor(self, instance_type="ml.m5.large", instance_count=1, hyperparameters=None, output_path=None):
+    def start_sagemaker_executor(self, instance_type="ml.m5.large", instance_count=1, hyperparameters=None, output_path=None, return_estimator=False):
         """Run training job on AWS SageMaker"""
         if hyperparameters is None:
             hyperparameters = {}
@@ -71,6 +71,8 @@ class AWSHelper:
         print(f"Starting SageMaker job with entrypoint '{self.entrypoint}' on {instance_count} x {instance_type}...")
         estimator.fit()
         print("SageMaker job started.")
+        if return_estimator:
+            return estimator
 
     def upload_zip(self, folder_path, s3_prefix=""):
         """

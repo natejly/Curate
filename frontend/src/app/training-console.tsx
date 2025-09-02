@@ -39,7 +39,15 @@ export default function TrainingConsole() {
         <div className="w-full max-w-5xl">
           <div className="text-2xl font-bold text-white mb-6">Training Console</div>
           <div className="bg-black border border-white/20 rounded-lg p-6 text-green-200 font-mono text-sm h-[600px] w-full overflow-y-auto" style={{whiteSpace: 'pre-wrap'}}>
-            {consoleLogs || "Waiting for logs..."}
+            {consoleLogs
+              ? consoleLogs
+              : (
+                  <span className="text-yellow-300">
+                    {trainStatus === "Training started..."
+                      ? "Waiting for logs... If you selected an S3 dataset, logs may not be available until the job completes."
+                      : "No logs available for this session."}
+                  </span>
+                )}
           </div>
           <div className="mt-6 p-2 rounded bg-black/30 border border-white/10 text-white text-center">
             {trainStatus}

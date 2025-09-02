@@ -2,7 +2,6 @@ from fastapi.responses import StreamingResponse
 import subprocess
 import sys
 
-
 import openai
 from dotenv import load_dotenv
 import os
@@ -14,6 +13,8 @@ from fastapi.responses import JSONResponse
 from pathlib import Path
 import uuid
 from cloud.aws import AWSHelper
+import json
+import threading
 
 app = FastAPI(title="File Upload Server", description="Server for handling zip uploads only")
 
@@ -29,18 +30,43 @@ app.add_middleware(
 # Create temp directory if it doesn't exist
 TEMP_DIR = Path(__file__).parent / "temp_uploads"
 TEMP_DIR.mkdir(exist_ok=True)
+JOB_MAP_PATH = Path(__file__).parent / "sagemaker_job_map.json"
+def save_job_map(job_map):
+    with open(JOB_MAP_PATH, "w") as f:
+        json.dump(job_map, f)
+def load_job_map():
+    if JOB_MAP_PATH.exists():
+        with open(JOB_MAP_PATH, "r") as f:
+            return json.load(f)
+    return {}
 
 load_dotenv()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-
+@app.get("/available-datasets")
+async def available_datasets():
+    """List available datasets in the S3 curate/datasets bucket."""
+    aws_helper = AWSHelper("curate-sagemaker-bucket-123456789012")
+    s3_client = aws_helper.s3_client
+    bucket = aws_helper.bucket
+    prefix = "curate/datasets/"
+    try:
+        response = s3_client.list_objects_v2(Bucket=bucket, Prefix=prefix)
+        datasets = []
+        for obj in response.get("Contents", []):
+            key = obj["Key"]
+            if key.endswith(".zip"):
+                datasets.append(key.replace(prefix, ""))
+        return {"datasets": datasets}
+    except Exception as e:
+        return {"error": str(e)}
 # SSE endpoint to stream training logs
 @app.get("/train-logs/{session_id}")
 async def train_logs(session_id: str):
     def log_stream():
-        print(f"Launching training: {sys.executable} cloud/ImgClass/ImgClassTrain.py {session_id}")
-        try:
-            # Start SageMaker training and stream logs from backend stdout
-            session_dir = TEMP_DIR / session_id
+        print(f"Launching training logs for session: {session_id}")
+        # Try local session logs first
+        session_dir = TEMP_DIR / session_id
+        if session_dir.exists():
             items = [item for item in session_dir.iterdir() if item.is_dir()]
             if not items:
                 yield f"data: No dataset folder found after unzip\n\n"
@@ -57,7 +83,6 @@ async def train_logs(session_id: str):
                 'batch_size': 32
             }
             output_path = f"s3://{aws_helper.bucket}/curate/output/"
-            # Start SageMaker and capture stdout
             process = subprocess.Popen(
                 [sys.executable, "-u", "-c",
                  "import sys; from cloud.aws import AWSHelper; aws_helper = AWSHelper('curate-sagemaker-bucket-123456789012'); aws_helper.start_sagemaker_executor(instance_type='ml.g4dn.xlarge', instance_count=1, hyperparameters={'use_ai_advisor': '', 'apply_recommendations': '', 'save_recommendations': '', 'epochs': 10, 'batch_size': 32}, output_path='s3://curate-sagemaker-bucket-123456789012/curate/output/')"],
@@ -65,13 +90,12 @@ async def train_logs(session_id: str):
                 stderr=subprocess.STDOUT,
                 text=True
             )
-        except Exception as e:
-            print(f"Subprocess failed to start: {e}")
-            yield f"data: Subprocess failed to start: {e}\n\n"
+            for line in process.stdout:
+                yield f"data: {line}\n\n"
+            print("Training subprocess finished.")
             return
-        for line in process.stdout:
-            yield f"data: {line}\n\n"
-        print("Training subprocess finished.")
+        # If not local, treat as S3 job: stream a placeholder and instruct user to check SageMaker logs
+        yield f"data: Training started for S3 dataset. Logs are available in AWS SageMaker for session {session_id}.\n\n"
     return StreamingResponse(log_stream(), media_type="text/event-stream")
 
 # Endpoint to extract test results after training
@@ -243,3 +267,45 @@ async def dataset_info(session_id: str):
     with open(info_path, "r") as f:
         result = json.load(f)
     return result
+
+@app.post("/train-s3/{zip_name}")
+async def train_s3(zip_name: str):
+    """Trigger training for a dataset zip in S3 (curate/datasets/)."""
+    import uuid
+    session_id = str(uuid.uuid4())
+    aws_helper = AWSHelper("curate-sagemaker-bucket-123456789012")
+    s3_client = aws_helper.s3_client
+    bucket = aws_helper.bucket
+    s3_key = f"curate/datasets/{zip_name}"
+    # Check if zip exists in S3
+    try:
+        response = s3_client.list_objects_v2(Bucket=bucket, Prefix=s3_key)
+        found = any(obj["Key"] == s3_key for obj in response.get("Contents", []))
+        if not found:
+            raise HTTPException(status_code=404, detail=f"Dataset {zip_name} not found in S3.")
+        aws_helper.s3_path = f"s3://{bucket}/{s3_key}"
+        aws_helper.set_base_job_name(zip_name.replace(".zip", ""))
+        hyperparameters = {
+            'use_ai_advisor': '',
+            'apply_recommendations': '',
+            'save_recommendations': '',
+            'epochs': 10,
+            'batch_size': 32,
+            'zip_s3_path': aws_helper.s3_path,
+            'session_id': session_id
+        }
+        output_path = f"s3://{bucket}/curate/output/"
+        estimator = aws_helper.start_sagemaker_executor(
+            instance_type="ml.g4dn.xlarge",
+            instance_count=1,
+            hyperparameters=hyperparameters,
+            output_path=output_path,
+            return_estimator=True
+        )
+        job_name = estimator.latest_training_job.name
+        job_map = load_job_map()
+        job_map[session_id] = job_name
+        save_job_map(job_map)
+        return {"status": "Training Started", "session_id": session_id, "job_name": job_name}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Training failed: {str(e)}")

@@ -6,7 +6,7 @@
 *.bmp
 *.tiff
 
-
+*.json
 
 # Environment and Configuration Files
 .env
