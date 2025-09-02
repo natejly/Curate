@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pathlib import Path
 import uuid
+from cloud.aws import AWSHelper
 
 app = FastAPI(title="File Upload Server", description="Server for handling zip uploads only")
 
@@ -29,6 +30,41 @@ load_dotenv()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 
+# Train endpoint
+@app.post("/train/{session_id}")
+async def train(session_id: str):
+    session_dir = TEMP_DIR / session_id
+    if not session_dir.exists():
+        raise HTTPException(status_code=404, detail="Session not found")
+    # Find the first folder (assume dataset root)
+    items = [item for item in session_dir.iterdir() if item.is_dir()]
+    if not items:
+        raise HTTPException(status_code=400, detail="No dataset folder found after unzip")
+    dataset_root = str(items[0])
+
+    # Initialize AWS helper
+    aws_helper = AWSHelper("curate-sagemaker-bucket-123456789012")
+    # Upload dataset to S3
+    try:
+        aws_helper.upload_zip(dataset_root, "curate/datasets/")
+        aws_helper.set_base_job_name(os.path.basename(dataset_root))
+        hyperparameters = {
+            'use_ai_advisor': '',
+            'apply_recommendations': '',
+            'save_recommendations': '',
+            'epochs': 10,
+            'batch_size': 32
+        }
+        output_path = f"s3://{aws_helper.bucket}/curate/output/"
+        aws_helper.start_sagemaker_executor(
+            instance_type="ml.g4dn.xlarge",
+            instance_count=1,
+            hyperparameters=hyperparameters,
+            output_path=output_path
+        )
+        return {"status": "Training started", "job_name": aws_helper.base_job_name}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Training failed: {str(e)}")
 
 
 @app.get("/")
@@ -124,6 +160,7 @@ async def dataset_info(session_id: str):
             llm_task = "ERROR"
 
         result = {
+            "session_id": session_id,
             "train_dir": img_data.train_dir,
             "val_dir": img_data.val_dir,
             "test_dir": img_data.test_dir,

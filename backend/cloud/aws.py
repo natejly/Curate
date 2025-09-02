@@ -20,13 +20,13 @@ class AWSHelper:
     )
         self.session = sagemaker.Session()
         self.git_config = {
-            "repo": "https://github.com/natejly/curate-app.git",
+            "repo": "https://github.com/natejly/curate.git",
             "branch": "main"
         }
         self.entrypoint = "train.py"
         self.role = "arn:aws:iam::974703727033:role/SageMakerExecutionRole"
         self.s3_path = None
-        self.base_job_name = "curate-tf-job"
+        self.base_job_name = "curate-job"
     def set_base_job_name(self, name):
         self.base_job_name = name
     def start_sagemaker_executor(self, instance_type="ml.m5.large", instance_count=1, hyperparameters=None, output_path=None):
@@ -53,7 +53,7 @@ class AWSHelper:
         
         estimator = TensorFlow(
             entry_point=self.entrypoint,
-            source_dir="cloud",  # Include all files in cloud directory
+            source_dir="backend/cloud",  # Include all files in cloud directory
             # dependencies are handled by requirements.txt in source_dir
             role=self.role,
             instance_count=instance_count,
