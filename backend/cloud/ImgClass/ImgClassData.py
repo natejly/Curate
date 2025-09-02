@@ -8,6 +8,15 @@ import numpy as np
 from PIL import Image
 
 class ImgClassData:
+    def is_valid_dataset(self):
+        # Check for at least one class folder in train split
+        if not self.train_folders or not self.classes:
+            return False
+        # Check each class folder has image files
+        for folder in self.train_folders:
+            if not os.path.isdir(folder) or not os.listdir(folder):
+                return False
+        return True
     """
     Data Parser for Image Classification
     """
