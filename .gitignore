@@ -1,0 +1,302 @@
+# Curate App .gitignore
+
+# Environment and Configuration Files
+.env
+*.env
+config.env
+.env.local
+.env.production
+.env.staging
+.env.development
+
+# API Keys and Secrets
+*api_key*
+*secret*
+*credentials*
+*.pem
+*.key
+*.crt
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environments
+.env/
+.venv/
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+.conda/
+conda-meta/
+
+# PyCharm
+.idea/
+*.iws
+*.iml
+*.ipr
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb
+
+# IPython
+profile_default/
+ipython_config.py
+
+# pytest
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+
+# Machine Learning and Data
+# Training outputs
+models/
+*.h5
+*.keras
+*.pb
+*.ckpt
+*.ckpt.*
+*.meta
+*.index
+*.data-*
+model_*/
+checkpoints/
+logs/
+runs/
+experiments/
+
+# Training logs and outputs
+training_log_*.json
+ai_recommendations_*.json
+*.log
+*.out
+*.err
+
+# Dataset files (large files)
+datasets/
+data/
+*.zip
+*.tar
+*.tar.gz
+*.rar
+*.7z
+
+# Temporary model files
+temp_model/
+tmp_model/
+model_temp/
+
+# AWS and Cloud
+.aws/
+aws-exports.js
+
+# TensorFlow
+*.tfevents.*
+*.tflite
+*.pb
+saved_model/
+tf_logs/
+
+# PyTorch
+*.pth
+*.pt
+
+# MLflow
+mlruns/
+mlartifacts/
+
+# Weights & Biases
+wandb/
+
+# DVC (Data Version Control)
+.dvc
+.dvcignore
+
+# System Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.backup
+tmp/
+temp/
+
+# Logs
+*.log
+logs/
+log/
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage directory used by tools like istanbul
+coverage/
+*.lcov
+
+# nyc test coverage
+.nyc_output
+
+# Dependency directories
+node_modules/
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
+
+# Microbundle cache
+.rpt2_cache/
+.rts2_cache_cjs/
+.rts2_cache_es/
+.rts2_cache_umd/
+
+# Optional REPL history
+.node_repl_history
+
+# Output of 'npm pack'
+*.tgz
+
+# Yarn Integrity file
+.yarn-integrity
+
+# Archive files
+*.zip
+*.tar.gz
+*.rar
+*.7z
+
+# Large dataset files
+*.csv
+*.tsv
+*.xlsx
+*.xls
+*.parquet
+
+# Image datasets (if large)
+# Uncomment if you have large image datasets
+# *.jpg
+# *.jpeg
+# *.png
+# *.gif
+# *.bmp
+# *.tiff
+
+# Video files
+*.mp4
+*.avi
+*.mov
+*.wmv
+*.flv
+
+# Audio files
+*.mp3
+*.wav
+*.flac
+*.aac
+
+# Local development
+local_*
+dev_*
+test_*
+debug_*
+
+# IDE and Editor files
+*.sublime-project
+*.sublime-workspace
+*.atom
+*.brackets.json
+
+# OS generated files
+Icon?
+.Trash-*
+
+# Vim
+*.swp
+*.swo
+*~
+
+# Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+auto-save-list
+tramp
+.\#*
+
+# Documentation build
+docs/_build/
+site/
+
+# Local configuration overrides
+local_config.py
+local_settings.py
+settings_local.py
+config_local.py
+
+# Test outputs
+test_outputs/
+test_results/
+benchmark_results/
+
+# Profiling outputs
+*.prof
+*.lprof
+*.pstats
+
+# Custom additions for this project
+sorted_digits_fast/
+model_output_*.zip
+example_recommendations.json
+
+todo.md
