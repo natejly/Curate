@@ -19,7 +19,8 @@ class AWSHelper:
         use_threads=True
     )
         self.session = sagemaker.Session()
-        git_config = {
+        # Optional: use a Git repo as source. Keep available via self.git_config.
+        self.git_config = {
             "repo": "https://github.com/natejly/Curate.git",
             "branch": "sagemaker-test"
         }

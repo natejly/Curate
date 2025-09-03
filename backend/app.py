@@ -105,6 +105,9 @@ async def train_logs(session_id: str):
         logs_client = boto3.client("logs")
         log_group = "/curate/training"
         log_stream = session_id
+        # Fallback to default SageMaker log group if custom logs are not found
+        sm_log_group = "/aws/sagemaker/TrainingJobs"
+        sm_log_stream = None  # Will be discovered via prefix = job_name
         next_token = None
         seen_events = set()
         retry_count = 0
@@ -122,6 +125,17 @@ async def train_logs(session_id: str):
                         yield f"data: Log group {log_group} not found yet, waiting...\n\n"
                     retry_count += 1
                     time.sleep(3)
+                    # Try discovering SageMaker default logs as a fallback
+                    if job_name and not sm_log_stream:
+                        resp = logs_client.describe_log_streams(
+                            logGroupName=sm_log_group,
+                            logStreamNamePrefix=job_name
+                        )
+                        streams = resp.get("logStreams", [])
+                        if streams:
+                            sm_log_stream = streams[0]["logStreamName"]
+                            next_token = None
+                            yield f"data: Falling back to SageMaker logs: group {sm_log_group}, stream {sm_log_stream}\n\n"
                     continue
                 
                 # Check if log stream exists
@@ -133,13 +147,27 @@ async def train_logs(session_id: str):
                 except logs_client.exceptions.ResourceNotFoundException:
                     if retry_count % 10 == 0:  # Every 30 seconds
                         yield f"data: Log stream {log_stream} not found yet, waiting for training to start...\n\n"
+                    # Try discovering SageMaker default logs as a fallback
+                    if job_name and not sm_log_stream:
+                        resp = logs_client.describe_log_streams(
+                            logGroupName=sm_log_group,
+                            logStreamNamePrefix=job_name
+                        )
+                        streams = resp.get("logStreams", [])
+                        if streams:
+                            sm_log_stream = streams[0]["logStreamName"]
+                            next_token = None
+                            yield f"data: Falling back to SageMaker logs: group {sm_log_group}, stream {sm_log_stream}\n\n"
                     retry_count += 1
                     time.sleep(3)
                     continue
                 
+                # Determine which log group/stream to read from
+                active_group = log_group if not sm_log_stream else sm_log_group
+                active_stream = log_stream if not sm_log_stream else sm_log_stream
                 kwargs = {
-                    "logGroupName": log_group,
-                    "logStreamName": log_stream,
+                    "logGroupName": active_group,
+                    "logStreamName": active_stream,
                     "startFromHead": True
                 }
                 if next_token:
@@ -157,7 +185,10 @@ async def train_logs(session_id: str):
                     next_token = response.get("nextForwardToken")
                 else:
                     if retry_count % 10 == 0:  # Every 30 seconds
-                        yield f"data: Log stream exists but no events yet, waiting...\n\n"
+                        if not sm_log_stream:
+                            yield f"data: Log stream exists but no events yet, waiting...\n\n"
+                        else:
+                            yield f"data: SageMaker stream exists but no events yet, waiting...\n\n"
                 
                 retry_count += 1
                 time.sleep(3)

@@ -6,6 +6,7 @@ SageMaker Training Script for Image Classification
 import argparse
 import logging
 import os
+import sys
 
 # Suppress TensorFlow verbose output
 import tensorflow as tf
@@ -39,7 +40,8 @@ from trainio import (
     setup_model_directory
 )
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
+# Use the root logger so all messages (including from other modules) can propagate
+logger = logging.getLogger()
 # Import AI advisor (optional)
 try:
     from advisor import TrainingAdvisor, create_advisor_summary
@@ -105,9 +107,23 @@ def main():
         # Set formatter for better log messages
         formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
         cw_handler.setFormatter(formatter)
-        
+
+        # Attach to root logger and ensure INFO level
         logger.addHandler(cw_handler)
         logger.setLevel(logging.INFO)
+
+        # Redirect stdout/stderr prints to logging so training progress is captured
+        class _StreamToLogger:
+            def __init__(self, level):
+                self.level = level
+            def write(self, message):
+                msg = message.rstrip()
+                if msg:
+                    logging.getLogger().log(self.level, msg)
+            def flush(self):
+                pass
+        sys.stdout = _StreamToLogger(logging.INFO)
+        sys.stderr = _StreamToLogger(logging.ERROR)
         
         logger.info(f"Custom CloudWatch logging started for session {cw_log_stream}")
         logger.info("Starting SageMaker training job")
