@@ -21,7 +21,10 @@ class AWSHelper:
     )
         self.session = sagemaker.Session()
         # Optional: use a Git repo as source. Disabled by default to use local source_dir
-        self.git_config = None
+        self.git_config = {
+            "repo": "hhttps://github.com/natejly/curate.git",
+            "branch": "sagemaker-test"
+        }
         self.entrypoint = "cloud/train.py"
         # Resolve absolute source_dir to the local backend/ folder
         self.source_dir = str(Path(__file__).resolve().parents[1])
