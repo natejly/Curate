@@ -83,23 +83,31 @@ async def train_logs(session_id: str):
                 'batch_size': 32
             }
             output_path = f"s3://{aws_helper.bucket}/curate/output/"
+            # Start SageMaker job in a subprocess and include this session_id so logs stream under the right name
+            cmd = (
+                "from cloud.aws import AWSHelper; "
+                "aws_helper = AWSHelper('curate-sagemaker-bucket-123456789012'); "
+                f"aws_helper.start_sagemaker_executor("
+                f"instance_type='ml.g4dn.xlarge', instance_count=1, "
+                f"hyperparameters={{'use_ai_advisor': '', 'apply_recommendations': '', 'save_recommendations': '', 'epochs': 10, 'batch_size': 32, 'session_id': '{session_id}'}}, "
+                f"output_path='s3://curate-sagemaker-bucket-123456789012/curate/output/', wait=False"
+                f")"
+            )
             process = subprocess.Popen(
-                [sys.executable, "-u", "-c",
-                 "import sys; from cloud.aws import AWSHelper; aws_helper = AWSHelper('curate-sagemaker-bucket-123456789012'); aws_helper.start_sagemaker_executor(instance_type='ml.g4dn.xlarge', instance_count=1, hyperparameters={'use_ai_advisor': '', 'apply_recommendations': '', 'save_recommendations': '', 'epochs': 10, 'batch_size': 32}, output_path='s3://curate-sagemaker-bucket-123456789012/curate/output/')"],
+                [sys.executable, "-u", "-c", cmd],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True
             )
             for line in process.stdout:
                 yield f"data: {line}\n\n"
-            print("Training subprocess finished.")
-            return
+            print("Training subprocess finished. Switching to CloudWatch stream...")
         # S3 job: stream SageMaker logs from CloudWatch
         job_map = load_job_map()
         job_name = job_map.get(session_id)
         if not job_name:
-            yield f"data: No SageMaker job found for session {session_id}.\n\n"
-            return
+            # We may still have custom watchtower logs under /curate/training with this session_id
+            yield f"data: Monitoring custom logs for session {session_id} (no job map entry yet).\n\n"
         import boto3
         import time
         logs_client = boto3.client("logs")
@@ -405,7 +413,8 @@ async def train_s3(zip_name: str):
             instance_count=1,
             hyperparameters=hyperparameters,
             output_path=output_path,
-            return_estimator=True
+            return_estimator=True,
+            wait=False
         )
         job_name = estimator.latest_training_job.name
         job_map = load_job_map()

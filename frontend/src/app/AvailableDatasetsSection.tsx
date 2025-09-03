@@ -11,16 +11,29 @@ export function AvailableDatasetsSection() {
 
   async function handleTrain() {
     if (!selected) return;
-    setTrainStatus("Training started...");
-    const sessionId = crypto.randomUUID();
-    setSelected(null); // Deselect after training
-    router.push(`/training-console?sessionId=${encodeURIComponent(sessionId)}`);
-    // Fire and forget backend request
-    fetch(`http://localhost:8000/train-s3/${encodeURIComponent(selected)}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ session_id: sessionId })
-    });
+    try {
+      setTrainStatus("Training started...");
+      // Start job and wait for backend to return the session_id it uses
+      const resp = await fetch(`http://localhost:8000/train-s3/${encodeURIComponent(selected)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" }
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({} as any));
+        setTrainStatus("Failed to start training.");
+        return;
+      }
+      const data = await resp.json();
+      const sessionId = data?.session_id;
+      if (!sessionId) {
+        setTrainStatus("Missing session ID from backend.");
+        return;
+      }
+      setSelected(null); // Deselect after training
+      router.push(`/training-console?sessionId=${encodeURIComponent(sessionId)}`);
+    } catch (e) {
+      setTrainStatus("Failed to start training.");
+    }
   }
 
   return (
