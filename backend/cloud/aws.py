@@ -20,7 +20,7 @@ class AWSHelper:
     )
         self.session = sagemaker.Session()
         self.git_config = {
-            "repo": "https://github.com/natejly/curate.git",
+            "repo": "https://github.com/natejly/Curate/tree/sagemaker-test",
             "branch": "main"
         }
         self.entrypoint = "cloud/train.py"
