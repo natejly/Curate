@@ -106,62 +106,73 @@ async def train_logs(session_id: str):
         print(f"[DEBUG] Connecting to CloudWatch logs...")
         _region = _os.environ.get('AWS_REGION') or _os.environ.get('AWS_DEFAULT_REGION') or boto3.session.Session().region_name or 'us-east-1'
         logs_client = boto3.client("logs", region_name=_region)
-        log_group = "/aws/sagemaker/TrainingJobs"
-        job_name = job_map.get(session_id)
-        if not job_name:
-            yield f"data: No SageMaker job found for session {session_id}.\n\n"
-            return
+        
+        yield f"data: SageMaker job {job_name} found. Waiting for training to start and logs to appear...\n\n"
+        
         # Try custom log group first, then fall back to SageMaker default
         log_groups_to_try = ["/curate/training", "/aws/sagemaker/TrainingJobs"]
         log_group = None
         log_stream = None
         
-        for candidate_log_group in log_groups_to_try:
-            print(f"[DEBUG] Trying log group: {candidate_log_group}")
-            try:
-                # Find the correct log stream for the job
-                if candidate_log_group == "/curate/training":
-                    # For custom logs, use session_id as stream name
-                    log_stream = session_id
-                    print(f"[DEBUG] Using custom log stream: {log_stream}")
-                    # Check if this specific stream exists
-                    try:
-                        logs_client.describe_log_streams(
-                            logGroupName=candidate_log_group,
-                            logStreamNamePrefix=log_stream
-                        )
-                        print(f"[DEBUG] Custom log stream {log_stream} exists")
-                    except logs_client.exceptions.ResourceNotFoundException:
-                        print(f"[DEBUG] Custom log stream {log_stream} not found")
-                        continue
-                else:
-                    # For SageMaker logs, find the algo-1 stream
-                    streams_resp = logs_client.describe_log_streams(logGroupName=candidate_log_group, logStreamNamePrefix=job_name)
-                    streams = streams_resp.get("logStreams", [])
-                    print(f"[DEBUG] Found {len(streams)} log streams for job {job_name} in {candidate_log_group}")
-                    for s in streams:
-                        print(f"[DEBUG] Available stream: {s['logStreamName']}")
-                        if s["logStreamName"].startswith(job_name + "/algo-1-"):
-                            log_stream = s["logStreamName"]
-                            print(f"[DEBUG] Selected SageMaker log stream: {log_stream}")
-                            break
-                
-                # Check if log group exists
+        # Wait for logs to appear (job is booting up)
+        boot_retry_count = 0
+        max_boot_retries = 200  # Wait up to 10 minutes for job to boot (200 * 3 seconds = 600 seconds = 10 minutes)
+        
+        while boot_retry_count < max_boot_retries and not log_stream:
+            for candidate_log_group in log_groups_to_try:
+                print(f"[DEBUG] Boot attempt {boot_retry_count}: Trying log group: {candidate_log_group}")
                 try:
-                    logs_client.describe_log_groups(logGroupNamePrefix=candidate_log_group)
-                    print(f"[DEBUG] Log group {candidate_log_group} exists")
-                    log_group = candidate_log_group  # Set the working log group
-                    break  # Found a working log group
-                except logs_client.exceptions.ResourceNotFoundException:
-                    print(f"[DEBUG] Log group {candidate_log_group} not found, trying next...")
-                    continue
+                    # Check if log group exists first
+                    try:
+                        logs_client.describe_log_groups(logGroupNamePrefix=candidate_log_group)
+                        print(f"[DEBUG] Log group {candidate_log_group} exists")
+                    except logs_client.exceptions.ResourceNotFoundException:
+                        print(f"[DEBUG] Log group {candidate_log_group} not found, trying next...")
+                        continue
                     
-            except Exception as e:
-                print(f"[DEBUG] Error with log group {candidate_log_group}: {str(e)}")
-                continue
+                    # Find the correct log stream for the job
+                    if candidate_log_group == "/curate/training":
+                        # For custom logs, use session_id as stream name
+                        log_stream = session_id
+                        print(f"[DEBUG] Using custom log stream: {log_stream}")
+                        # Check if this specific stream exists
+                        try:
+                            logs_client.describe_log_streams(
+                                logGroupName=candidate_log_group,
+                                logStreamNamePrefix=log_stream
+                            )
+                            print(f"[DEBUG] Custom log stream {log_stream} exists")
+                            log_group = candidate_log_group
+                            break
+                        except logs_client.exceptions.ResourceNotFoundException:
+                            print(f"[DEBUG] Custom log stream {log_stream} not found")
+                            continue
+                    else:
+                        # For SageMaker logs, find the algo-1 stream
+                        streams_resp = logs_client.describe_log_streams(logGroupName=candidate_log_group, logStreamNamePrefix=job_name)
+                        streams = streams_resp.get("logStreams", [])
+                        print(f"[DEBUG] Found {len(streams)} log streams for job {job_name} in {candidate_log_group}")
+                        for s in streams:
+                            print(f"[DEBUG] Available stream: {s['logStreamName']}")
+                            if s["logStreamName"].startswith(job_name + "/algo-1-"):
+                                log_stream = s["logStreamName"]
+                                log_group = candidate_log_group
+                                print(f"[DEBUG] Selected SageMaker log stream: {log_stream}")
+                                break
+                        if log_stream:
+                            break
+                except Exception as e:
+                    print(f"[DEBUG] Error with log group {candidate_log_group}: {str(e)}")
+                    continue
+            
+            if not log_stream:
+                boot_retry_count += 1
+                if boot_retry_count % 5 == 0:  # Every 15 seconds
+                    yield f"data: Waiting for SageMaker job to start... ({boot_retry_count * 3}s elapsed)\n\n"
+                time.sleep(3)
         
         if not log_stream or not log_group:
-            yield f"data: No log streams found for session {session_id}.\n\n"
+            yield f"data: No log streams found for session {session_id} after waiting {max_boot_retries * 3} seconds (10 minutes).\n\n"
             return
         next_token = None
         seen_events = set()
