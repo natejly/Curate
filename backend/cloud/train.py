@@ -92,16 +92,18 @@ def parse_args():
 
 
 def setup_cloudwatch_logging(session_id):
-    """Set up CloudWatch logging using boto3 directly"""
+    """Set up CloudWatch logging using boto3 directly, with region detection."""
     import boto3
     import json
     from datetime import datetime
+    import os as _os
     
     log_group = "/curate/training"
     log_stream = session_id or "default-stream"
     
     try:
-        logs_client = boto3.client('logs')
+        region = _os.environ.get('AWS_REGION') or _os.environ.get('AWS_DEFAULT_REGION') or boto3.session.Session().region_name or 'us-east-1'
+        logs_client = boto3.client('logs', region_name=region)
         
         # Create log group if it doesn't exist
         try:
@@ -120,7 +122,7 @@ def setup_cloudwatch_logging(session_id):
                 super().__init__()
                 self.log_group = log_group
                 self.log_stream = log_stream
-                self.logs_client = boto3.client('logs')
+                self.logs_client = boto3.client('logs', region_name=region)
                 self.sequence_token = None
                 self.buffer = []
                 self.max_buffer_size = 1  # Send logs immediately for real-time streaming

@@ -36,5 +36,6 @@ aws_helper.start_sagemaker_executor(
     instance_type="ml.g4dn.xlarge",  # CPU instance with higher availability
     instance_count=1, 
     hyperparameters=hyperparameters,
-    output_path=f"s3://{aws_helper.bucket}/curate/output/"
+    output_path=f"s3://{aws_helper.bucket}/curate/output/",
+    wait=False
 )

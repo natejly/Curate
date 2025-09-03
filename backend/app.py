@@ -85,7 +85,7 @@ async def train_logs(session_id: str):
             output_path = f"s3://{aws_helper.bucket}/curate/output/"
             process = subprocess.Popen(
                 [sys.executable, "-u", "-c",
-                 "import sys; from cloud.aws import AWSHelper; aws_helper = AWSHelper('curate-sagemaker-bucket-123456789012'); aws_helper.start_sagemaker_executor(instance_type='ml.g4dn.xlarge', instance_count=1, hyperparameters={'use_ai_advisor': '', 'apply_recommendations': '', 'save_recommendations': '', 'epochs': 10, 'batch_size': 32}, output_path='s3://curate-sagemaker-bucket-123456789012/curate/output/')"],
+                 "from cloud.aws import AWSHelper; aws_helper = AWSHelper('curate-sagemaker-bucket-123456789012'); aws_helper.start_sagemaker_executor(instance_type='ml.g4dn.xlarge', instance_count=1, hyperparameters={'use_ai_advisor': '', 'apply_recommendations': '', 'save_recommendations': '', 'epochs': 10, 'batch_size': 32}, output_path='s3://curate-sagemaker-bucket-123456789012/curate/output/', wait=False)"],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True
@@ -93,7 +93,7 @@ async def train_logs(session_id: str):
             for line in process.stdout:
                 yield f"data: {line}\n\n"
             print("Training subprocess finished.")
-            return
+            # Continue to CloudWatch streaming below
         # S3 job: stream SageMaker logs from CloudWatch
         job_map = load_job_map()
         job_name = job_map.get(session_id)
@@ -101,9 +101,11 @@ async def train_logs(session_id: str):
             yield f"data: No SageMaker job found for session {session_id}.\n\n"
             return
         import boto3
+        import os as _os
         import time
         print(f"[DEBUG] Connecting to CloudWatch logs...")
-        logs_client = boto3.client("logs")
+        _region = _os.environ.get('AWS_REGION') or _os.environ.get('AWS_DEFAULT_REGION') or boto3.session.Session().region_name or 'us-east-1'
+        logs_client = boto3.client("logs", region_name=_region)
         log_group = "/aws/sagemaker/TrainingJobs"
         job_name = job_map.get(session_id)
         if not job_name:
@@ -236,7 +238,8 @@ async def train(session_id: str):
             instance_type="ml.g4dn.xlarge",
             instance_count=1,
             hyperparameters=hyperparameters,
-            output_path=output_path
+            output_path=output_path,
+            wait=False
         )
         return {"status": "Training Finished", "job_name": aws_helper.base_job_name}
     except Exception as e:

@@ -29,7 +29,7 @@ class AWSHelper:
         self.base_job_name = "curate-job"
     def set_base_job_name(self, name):
         self.base_job_name = name
-    def start_sagemaker_executor(self, instance_type="ml.m5.large", instance_count=1, hyperparameters=None, output_path=None, return_estimator=False):
+    def start_sagemaker_executor(self, instance_type="ml.m5.large", instance_count=1, hyperparameters=None, output_path=None, return_estimator=False, wait=False):
         """Run training job on AWS SageMaker"""
         if hyperparameters is None:
             hyperparameters = {}
@@ -50,6 +50,12 @@ class AWSHelper:
             print("✅ OpenAI API key will be available in SageMaker environment")
         else:
             print("⚠️ No OpenAI API key found - AI advisor will be disabled")
+        # Ensure AWS region is present for explicit boto3 clients
+        local_region = os.getenv('AWS_REGION') or os.getenv('AWS_DEFAULT_REGION')
+        if local_region:
+            environment['AWS_REGION'] = local_region
+            environment.setdefault('AWS_DEFAULT_REGION', local_region)
+            print(f"✅ AWS region set for training container: {local_region}")
         
         estimator = TensorFlow(
             entry_point=self.entrypoint,
@@ -69,7 +75,7 @@ class AWSHelper:
         )
 
         print(f"Starting SageMaker job with entrypoint '{self.entrypoint}' on {instance_count} x {instance_type}...")
-        estimator.fit()
+        estimator.fit(wait=wait)
         print("SageMaker job started.")
         if return_estimator:
             return estimator
