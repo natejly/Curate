@@ -6,6 +6,7 @@ from tqdm import tqdm  # install via: pip install tqdm
 import shutil
 import sagemaker
 from sagemaker.tensorflow import TensorFlow
+from pathlib import Path
 
 class AWSHelper:
     def __init__(self, bucket_name):
@@ -22,6 +23,8 @@ class AWSHelper:
         # Optional: use a Git repo as source. Disabled by default to use local source_dir
         self.git_config = None
         self.entrypoint = "cloud/train.py"
+        # Resolve absolute source_dir to the local backend/ folder
+        self.source_dir = str(Path(__file__).resolve().parents[1])
         self.role = "arn:aws:iam::974703727033:role/SageMakerExecutionRole"
         self.s3_path = None
         self.base_job_name = "curate-job"
@@ -51,8 +54,8 @@ class AWSHelper:
         
         estimator_kwargs = dict(
             entry_point=self.entrypoint,
-            source_dir="backend",  # Include all files in cloud directory
-            # dependencies are handled by requirements.txt in source_dir
+            source_dir=self.source_dir,  # Package local backend folder (includes requirements.txt)
+            dependencies=["requirements.txt"],  # Explicitly specify requirements file
             role=self.role,
             instance_count=instance_count,
             instance_type=instance_type,
@@ -69,6 +72,7 @@ class AWSHelper:
         estimator = TensorFlow(**estimator_kwargs)
 
         print(f"Starting SageMaker job with entrypoint '{self.entrypoint}' on {instance_count} x {instance_type}...")
+        print(f"Packaging source_dir: {self.source_dir}")
         estimator.fit(wait=wait)
         print("SageMaker job started.")
         if return_estimator:
