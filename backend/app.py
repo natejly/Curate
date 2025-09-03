@@ -78,15 +78,16 @@ async def train_logs(session_id: str):
         retry_count = 0
         while retry_count < max_retries and not log_stream_name:
             try:
-                cmd_describe = [
-                    "aws", "logs", "describe-log-streams",
+                cmd_tail = [
+                    "aws", "logs", "tail", log_group_name,
                     "--region", region,
-                    "--log-group-name", log_group_name,
                     "--log-stream-name-prefix", session_id,
-                    "--limit", "1"
+                    "--since", "1h",
+                    "--follow",
+                    "--format", "detailed",   # or "json" / "short"
                 ]
-                print(f"[DEBUG] Running command: {' '.join(cmd_describe)}")
-                result = subprocess.run(cmd_describe, capture_output=True, text=True, check=True)
+                print(f"[DEBUG] Running command: {' '.join(cmd_tail)}")
+                result = subprocess.run(cmd_tail, capture_output=True, text=True, check=True)
                 response = json.loads(result.stdout)
                 
                 if response.get("logStreams"):
@@ -200,17 +201,22 @@ async def train(session_id: str):
             'apply_recommendations': '',
             'save_recommendations': '',
             'epochs': 10,
-            'batch_size': 32
+            'batch_size': 32,
+            'session_id': session_id
         }
         output_path = f"s3://{aws_helper.bucket}/curate/output/"
-        aws_helper.start_sagemaker_executor(
+        estimator = aws_helper.start_sagemaker_executor(
             instance_type="ml.g4dn.xlarge",
             instance_count=1,
             hyperparameters=hyperparameters,
             output_path=output_path,
-            wait=False
+            return_estimator=True
         )
-        return {"status": "Training Finished", "job_name": aws_helper.base_job_name}
+        job_name = estimator.latest_training_job.name
+        job_map = load_job_map()
+        job_map[session_id] = job_name
+        save_job_map(job_map)
+        return {"status": "Training Started", "session_id": session_id, "job_name": job_name}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Training failed: {str(e)}")
 
