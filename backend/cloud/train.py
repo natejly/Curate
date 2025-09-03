@@ -85,20 +85,49 @@ def main():
     """Main training function."""
     try:
         args = parse_args()
+        # Set up custom CloudWatch logging
+        import watchtower
+        import boto3
+        cw_log_group = "/curate/training"
+        cw_log_stream = args.session_id or "default-stream"
+        
+        # Configure watchtower with proper settings
+        cw_handler = watchtower.CloudWatchLogHandler(
+            log_group=cw_log_group, 
+            stream_name=cw_log_stream,
+            send_interval=1,  # Send logs every 1 second
+            max_batch_size=1,  # Send immediately, don't batch
+            create_log_group=True,  # Create log group if it doesn't exist
+            boto3_client=boto3.client('logs')
+        )
+        cw_handler.setLevel(logging.INFO)
+        
+        # Set formatter for better log messages
+        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        cw_handler.setFormatter(formatter)
+        
+        logger.addHandler(cw_handler)
+        logger.setLevel(logging.INFO)
+        
+        logger.info(f"Custom CloudWatch logging started for session {cw_log_stream}")
         logger.info("Starting SageMaker training job")
         logger.info(f"Arguments: {vars(args)}")
         
         # Download and extract dataset
+        logger.info("=== DOWNLOADING DATASET ===")
         bucket, key = parse_s3_path(args.zip_s3_path)
+        logger.info(f"Downloading from s3://{bucket}/{key}")
         dataset_path = download_and_unzip(bucket, key, args.extract_to)
+        logger.info(f"Dataset extracted to: {dataset_path}")
         # print_dir_structure(dataset_path)
         
         # Initialize data parser
-        logger.info("Initializing data parser")
+        logger.info("=== INITIALIZING DATA PARSER ===")
         data_parser = ImgClassData(dataset_path)
+        logger.info(f"Found {len(data_parser.classes)} classes: {data_parser.classes}")
         
         # Initialize trainer
-        logger.info("Initializing trainer")
+        logger.info("=== INITIALIZING TRAINER ===")
         trainer = ImgClassTrainer(
             dataset_path=dataset_path,
             base_model_name=args.base_model_name,
@@ -108,6 +137,7 @@ def main():
             dual_stage=args.dual_stage,
             unfreeze_percent=args.unfreeze_percent
         )
+        logger.info(f"Using model: {args.base_model_name}, batch_size: {args.batch_size}, epochs: {args.epochs}")
 
         
         # AI Advisor Integration
@@ -215,23 +245,32 @@ def main():
             logger.info("AI Advisor not requested, using provided configuration")
         
         # Start training
-        logger.info("Starting training")
+        logger.info("=== STARTING TRAINING ===")
+        logger.info(f"Training will run for {args.epochs} epochs with batch size {args.batch_size}")
         trainer.run()
+        logger.info("=== TRAINING COMPLETED ===")
         trainer.training_log.show()
         
         # Setup model directory and save outputs
+        logger.info("=== SAVING MODEL AND LOGS ===")
         model_dir = setup_model_directory(args)
+        logger.info(f"Model directory: {model_dir}")
         
         # Save training log first (independent of model saving)
         save_training_log(trainer, model_dir)
+        logger.info("Training log saved")
         
         # Then save the model
         save_model(trainer, model_dir)
+        logger.info("Model saved")
         
-        logger.info("Training completed successfully!")
+        logger.info("=== TRAINING JOB COMPLETED SUCCESSFULLY ===")
         
     except Exception as e:
-        logger.error(f"Training failed: {str(e)}")
+        logger.error(f"=== TRAINING FAILED ===")
+        logger.error(f"Error: {str(e)}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
         raise
 
 

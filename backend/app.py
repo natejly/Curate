@@ -94,8 +94,82 @@ async def train_logs(session_id: str):
                 yield f"data: {line}\n\n"
             print("Training subprocess finished.")
             return
-        # If not local, treat as S3 job: stream a placeholder and instruct user to check SageMaker logs
-        yield f"data: Training started for S3 dataset. Logs are available in AWS SageMaker for session {session_id}.\n\n"
+        # S3 job: stream SageMaker logs from CloudWatch
+        job_map = load_job_map()
+        job_name = job_map.get(session_id)
+        if not job_name:
+            yield f"data: No SageMaker job found for session {session_id}.\n\n"
+            return
+        import boto3
+        import time
+        logs_client = boto3.client("logs")
+        log_group = "/curate/training"
+        log_stream = session_id
+        next_token = None
+        seen_events = set()
+        retry_count = 0
+        max_retries = 60  # Try for 3 minutes
+        
+        yield f"data: Looking for logs in CloudWatch log group: {log_group}, stream: {log_stream}\n\n"
+        
+        while retry_count < max_retries:
+            try:
+                # First check if log group exists
+                try:
+                    logs_client.describe_log_groups(logGroupNamePrefix=log_group)
+                except logs_client.exceptions.ResourceNotFoundException:
+                    if retry_count % 10 == 0:  # Every 30 seconds
+                        yield f"data: Log group {log_group} not found yet, waiting...\n\n"
+                    retry_count += 1
+                    time.sleep(3)
+                    continue
+                
+                # Check if log stream exists
+                try:
+                    logs_client.describe_log_streams(
+                        logGroupName=log_group,
+                        logStreamNamePrefix=log_stream
+                    )
+                except logs_client.exceptions.ResourceNotFoundException:
+                    if retry_count % 10 == 0:  # Every 30 seconds
+                        yield f"data: Log stream {log_stream} not found yet, waiting for training to start...\n\n"
+                    retry_count += 1
+                    time.sleep(3)
+                    continue
+                
+                kwargs = {
+                    "logGroupName": log_group,
+                    "logStreamName": log_stream,
+                    "startFromHead": True
+                }
+                if next_token:
+                    kwargs["nextToken"] = next_token
+                    
+                response = logs_client.get_log_events(**kwargs)
+                events = response.get("events", [])
+                
+                if events:
+                    for event in events:
+                        event_id = event["eventId"]
+                        if event_id not in seen_events:
+                            seen_events.add(event_id)
+                            yield f"data: {event['message']}\n\n"
+                    next_token = response.get("nextForwardToken")
+                else:
+                    if retry_count % 10 == 0:  # Every 30 seconds
+                        yield f"data: Log stream exists but no events yet, waiting...\n\n"
+                
+                retry_count += 1
+                time.sleep(3)
+                
+            except Exception as e:
+                yield f"data: Error streaming training logs: {str(e)}\n\n"
+                retry_count += 1
+                time.sleep(3)
+                if retry_count >= max_retries:
+                    break
+        
+        yield f"data: Stopped monitoring logs after {max_retries * 3} seconds\n\n"
     return StreamingResponse(log_stream(), media_type="text/event-stream")
 
 # Endpoint to extract test results after training
