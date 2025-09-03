@@ -187,9 +187,27 @@ def setup_cloudwatch_logging(session_id):
         return None
 
 
+def install_requirements():
+    """Install packages from requirements.txt."""
+    try:
+        requirements_path = os.path.join(os.path.dirname(__file__), 'requirements.txt')
+        if os.path.exists(requirements_path):
+            logger.info(f"Found requirements.txt at {requirements_path}. Installing packages...")
+            subprocess.check_call([sys.executable, "-m", "pip", "install", "-r", requirements_path])
+            logger.info("Finished installing packages from requirements.txt.")
+        else:
+            logger.warning(f"requirements.txt not found at {requirements_path}. Skipping installation.")
+    except Exception as e:
+        logger.error(f"Failed to install requirements: {e}")
+        # Decide if you want to raise the exception or just log it
+        # raise e 
+
 def main():
     """Main training function."""
     try:
+        # Install requirements first
+        install_requirements()
+
         args = parse_args()
         
         # Set up custom CloudWatch logging

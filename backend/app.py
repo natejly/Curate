@@ -60,131 +60,71 @@ async def available_datasets():
     except Exception as e:
         return {"error": str(e)}
 @app.get("/train-logs/{session_id}")
+@app.get("/train-logs/{session_id}")
 async def train_logs(session_id: str):
-    def log_stream():
+    import asyncio
+    async def log_stream():
         print(f"[DEBUG] Launching training logs for session: {session_id}")
-        
-        # S3 job: stream SageMaker logs from CloudWatch
-        # Wait for job mapping to appear (training may have just started)
-        job_name = None
-        mapping_retry_count = 0
-        max_mapping_retries = 200  # Wait up to 10 minutes for job mapping to appear
-
-        while mapping_retry_count < max_mapping_retries and not job_name:
-            job_map = load_job_map()
-            job_name = job_map.get(session_id)
-            if not job_name:
-                mapping_retry_count += 1
-                if mapping_retry_count % 5 == 0:  # Every 15 seconds
-                    yield f"data: Waiting for training job to be created... ({mapping_retry_count * 3}s elapsed)\n\n"
-                print(f"[DEBUG] Job mapping not found yet, retrying... ({mapping_retry_count}/{max_mapping_retries})")
-                import time
-                time.sleep(3)
-            else:
-                print(f"[DEBUG] Found job mapping: {session_id} -> {job_name}")
-                break
-        
-        if not job_name:
-            yield f"data: No SageMaker job found for session {session_id} after waiting {max_mapping_retries * 3} seconds.\n\n"
-            return
-            
         import boto3
         import os as _os
-        import time
         print(f"[DEBUG] Connecting to CloudWatch logs...")
         _region = _os.environ.get('AWS_REGION') or _os.environ.get('AWS_DEFAULT_REGION') or boto3.session.Session().region_name or 'us-east-1'
+        print(f"[DEBUG] Using AWS Region: {_region}")
         logs_client = boto3.client("logs", region_name=_region)
-        
-        yield f"data: SageMaker job {job_name} found. Waiting for training to start and logs to appear...\n\n"
-        
-        # Try custom log group first, then fall back to SageMaker default
-        log_groups_to_try = ["/curate/training", "/aws/sagemaker/TrainingJobs"]
-        log_group = None
-        log_stream = None
-        
-        # Wait for logs to appear (job is booting up)
-        boot_retry_count = 0
-        max_boot_retries = 200  # Wait up to 10 minutes for job to boot (200 * 3 seconds = 600 seconds = 10 minutes)
-        
-        while boot_retry_count < max_boot_retries and not log_stream:
-            for candidate_log_group in log_groups_to_try:
-                print(f"[DEBUG] Boot attempt {boot_retry_count}: Trying log group: {candidate_log_group}")
-                try:
-                    # Check if log group exists first
-                    try:
-                        logs_client.describe_log_groups(logGroupNamePrefix=candidate_log_group)
-                        print(f"[DEBUG] Log group {candidate_log_group} exists")
-                    except logs_client.exceptions.ResourceNotFoundException:
-                        print(f"[DEBUG] Log group {candidate_log_group} not found, trying next...")
-                        continue
-                    
-                    # Find the correct log stream for the job
-                    if candidate_log_group == "/curate/training":
-                        # For custom logs, use session_id as stream name
-                        log_stream = session_id
-                        print(f"[DEBUG] Using custom log stream: {log_stream}")
-                        # Check if this specific stream exists
-                        try:
-                            logs_client.describe_log_streams(
-                                logGroupName=candidate_log_group,
-                                logStreamNamePrefix=log_stream
-                            )
-                            print(f"[DEBUG] Custom log stream {log_stream} exists")
-                            log_group = candidate_log_group
-                            break
-                        except logs_client.exceptions.ResourceNotFoundException:
-                            print(f"[DEBUG] Custom log stream {log_stream} not found")
-                            continue
-                    else:
-                        # For SageMaker logs, find the algo-1 stream
-                        streams_resp = logs_client.describe_log_streams(logGroupName=candidate_log_group, logStreamNamePrefix=job_name)
-                        streams = streams_resp.get("logStreams", [])
-                        print(f"[DEBUG] Found {len(streams)} log streams for job {job_name} in {candidate_log_group}")
-                        for s in streams:
-                            print(f"[DEBUG] Available stream: {s['logStreamName']}")
-                            if s["logStreamName"].startswith(job_name + "/algo-1-"):
-                                log_stream = s["logStreamName"]
-                                log_group = candidate_log_group
-                                print(f"[DEBUG] Selected SageMaker log stream: {log_stream}")
-                                break
-                        if log_stream:
-                            break
-                except Exception as e:
-                    print(f"[DEBUG] Error with log group {candidate_log_group}: {str(e)}")
-                    continue
-            
-            if not log_stream:
-                boot_retry_count += 1
-                if boot_retry_count % 5 == 0:  # Every 15 seconds
-                    yield f"data: Waiting for SageMaker job to start... ({boot_retry_count * 3}s elapsed)\n\n"
-                time.sleep(3)
-        
-        if not log_stream or not log_group:
-            yield f"data: No log streams found for session {session_id} after waiting {max_boot_retries * 3} seconds (10 minutes).\n\n"
+
+        max_retries = 2000
+        retry_count = 0
+        log_stream_name = None
+
+        while retry_count < max_retries and not log_stream_name:
+            try:
+                streams_response = logs_client.describe_log_streams(
+                    logGroupName="/curate/training",
+                    logStreamNamePrefix=session_id,
+                    limit=1
+                )
+                streams = streams_response.get("logStreams", [])
+                print(f"[DEBUG] describe_log_streams response: {streams_response}")
+            except Exception as e:
+                print(f"[DEBUG] Error calling describe_log_streams: {e}")
+                yield f"data: Error checking for log streams: {e}\n\n"
+                await asyncio.sleep(5)
+                retry_count += 1
+                continue
+                
+            if streams:
+                log_stream_name = streams[0]["logStreamName"]
+                print(f"[DEBUG] Found log stream: {log_stream_name}")
+            else:
+                yield f"data: Waiting for log stream {session_id}...\n\n"
+                await asyncio.sleep(3)
+                retry_count += 1
+
+        if not log_stream_name:
+            yield f"data: No log stream found for session {session_id} after waiting.\n\n"
             return
-            
+
+        yield f"data: Found logs! Streaming from CloudWatch log group: /curate/training, stream: {log_stream_name}\n\n"
         next_token = None
         seen_events = set()
-        retry_count = 0
-        max_retries = 60  # Try for 3 minutes
-        print(f"[DEBUG] log_group: {log_group}, log_stream: {log_stream}")
-        yield f"data: Found logs! Streaming from CloudWatch log group: {log_group}, stream: {log_stream}\n\n"
-        
-        while retry_count < max_retries:
+        event_retry_count = 0
+        max_event_retries = 200
+
+        while event_retry_count < max_event_retries:
             try:
-                print(f"[DEBUG] Fetching log events (attempt {retry_count})...")
+                print(f"[DEBUG] Fetching log events (attempt {event_retry_count})...")
                 kwargs = {
-                    "logGroupName": log_group,
-                    "logStreamName": log_stream,
+                    "logGroupName": "/curate/training",
+                    "logStreamName": log_stream_name,
                     "startFromHead": True
                 }
                 if next_token:
                     kwargs["nextToken"] = next_token
-                    
+
                 response = logs_client.get_log_events(**kwargs)
                 events = response.get("events", [])
                 print(f"[DEBUG] Fetched {len(events)} events.")
-                
+
                 if events:
                     for event in events:
                         event_id = event["eventId"]
@@ -194,24 +134,23 @@ async def train_logs(session_id: str):
                             yield f"data: {event['message']}\n\n"
                     next_token = response.get("nextForwardToken")
                 else:
-                    if retry_count % 10 == 0:
-                        print(f"[DEBUG] Log stream exists but no new events yet.")
+                    if event_retry_count % 10 == 0:
                         yield f"data: Waiting for new log events...\n\n"
-                
-                retry_count += 1
-                time.sleep(3)
-                
+
+                event_retry_count += 1
+                await asyncio.sleep(3)
+
             except Exception as e:
-                print(f"[DEBUG] Error streaming training logs: {str(e)}")
-                yield f"data: Error streaming training logs: {str(e)}\n\n"
-                retry_count += 1
-                time.sleep(3)
-                if retry_count >= max_retries:
+                print(f"[DEBUG] Error streaming logs: {str(e)}")
+                yield f"data: Error streaming logs: {str(e)}\n\n"
+                event_retry_count += 1
+                await asyncio.sleep(3)
+                if event_retry_count >= max_event_retries:
                     break
-        
-        print(f"[DEBUG] Stopped monitoring logs after {max_retries * 3} seconds.")
-        yield f"data: Stopped monitoring logs after {max_retries * 3} seconds\n\n"
-    
+
+        print(f"[DEBUG] Stopped monitoring logs after {max_event_retries * 3} seconds.")
+        yield f"data: Stopped monitoring logs after {max_event_retries * 3} seconds\n\n"
+
     return StreamingResponse(log_stream(), media_type="text/event-stream")
 
 # Endpoint to extract test results after training
