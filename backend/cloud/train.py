@@ -103,6 +103,7 @@ def setup_cloudwatch_logging(session_id):
     
     try:
         region = _os.environ.get('AWS_REGION') or _os.environ.get('AWS_DEFAULT_REGION') or boto3.session.Session().region_name or 'us-east-1'
+        print(f"[DEBUG] Setting up CloudWatch logging with region: {region}")
         logs_client = boto3.client('logs', region_name=region)
         
         # Create log group if it doesn't exist
@@ -197,9 +198,11 @@ def main():
             logger.addHandler(cw_handler)
             logger.setLevel(logging.INFO)
             logger.info(f"Custom CloudWatch logging started for session {args.session_id}")
+            print(f"[DEBUG] Custom CloudWatch logging is ACTIVE")
         else:
             logger.warning("CloudWatch logging setup failed, using default logging")
             logger.warning("watchtower not installed; using default SageMaker logs only")
+            print(f"[DEBUG] Custom CloudWatch logging FAILED, using SageMaker default logs")
 
         # Redirect stdout/stderr prints to logging so training progress is captured
         class _StreamToLogger:
