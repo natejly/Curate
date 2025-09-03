@@ -20,14 +20,16 @@ class AWSHelper:
         use_threads=True
     )
         self.session = sagemaker.Session()
-        # Optional: use a Git repo as source. Disabled by default to use local source_dir
+        # Git configuration for SageMaker to use your repo
         self.git_config = {
-            "repo": "hhttps://github.com/natejly/curate.git",
+            "repo": "https://github.com/natejly/Curate.git",
             "branch": "sagemaker-test"
         }
-        self.entrypoint = "cloud/train.py"
-        # Resolve absolute source_dir to the local backend/ folder
-        self.source_dir = str(Path(__file__).resolve().parents[1])
+        # Entry point relative to the git repo root
+        self.entrypoint = "backend/cloud/train.py"
+        # For local development, use None to disable git and use local source_dir
+        # For production, comment out the next line to use git_config
+        self.source_dir = None  # Use git_config instead of local source_dir
         self.role = "arn:aws:iam::974703727033:role/SageMakerExecutionRole"
         self.s3_path = None
         self.base_job_name = "curate-job"
@@ -57,8 +59,6 @@ class AWSHelper:
         
         estimator_kwargs = dict(
             entry_point=self.entrypoint,
-            source_dir=self.source_dir,  # Package local backend folder (includes requirements.txt)
-            dependencies=["requirements.txt"],  # Explicitly specify requirements file
             role=self.role,
             instance_count=instance_count,
             instance_type=instance_type,
@@ -70,8 +70,18 @@ class AWSHelper:
             base_job_name="curate-tf-job",
             sagemaker_session=self.session
         )
+        
+        # Use git_config for source code (recommended for production)
         if self.git_config:
             estimator_kwargs["git_config"] = self.git_config
+            print(f"Using git repo: {self.git_config['repo']} (branch: {self.git_config['branch']})")
+        # Fallback to local source_dir if git_config is disabled
+        elif self.source_dir:
+            estimator_kwargs["source_dir"] = self.source_dir
+            estimator_kwargs["dependencies"] = ["requirements.txt"]
+            print(f"Using local source_dir: {self.source_dir}")
+        else:
+            raise ValueError("Either git_config or source_dir must be configured")
         estimator = TensorFlow(**estimator_kwargs)
 
         print(f"Starting SageMaker job with entrypoint '{self.entrypoint}' on {instance_count} x {instance_type}...")

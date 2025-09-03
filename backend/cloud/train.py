@@ -29,9 +29,15 @@ except RuntimeError:
     pass
 
 print(f"Using GPU:{gpus}" if gpus else "No GPU found, using CPU")
-from ImgClass.ImgClassData import ImgClassData
-from ImgClass.ImgClassTrain import ImgClassTrainer
-from trainio import (
+
+# Add the backend directory to Python path for imports
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+
+from backend.cloud.ImgClass.ImgClassData import ImgClassData
+from backend.cloud.ImgClass.ImgClassTrain import ImgClassTrainer
+from backend.cloud.trainio import (
     download_and_unzip, 
     print_dir_structure, 
     parse_s3_path,

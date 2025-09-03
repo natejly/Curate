@@ -15,7 +15,8 @@ import uuid
 from cloud.aws import AWSHelper
 import json
 import threading
-
+# INSTANCE_TYPE = "ml.m5.large"
+INSTANCE_TYPE = "ml.g4dn.xlarge"
 app = FastAPI(title="File Upload Server", description="Server for handling zip uploads only")
 
 # Enable CORS for frontend
@@ -88,7 +89,7 @@ async def train_logs(session_id: str):
                 "from cloud.aws import AWSHelper; "
                 "aws_helper = AWSHelper('curate-sagemaker-bucket-123456789012'); "
                 f"aws_helper.start_sagemaker_executor("
-                f"instance_type='ml.g4dn.xlarge', instance_count=1, "
+                f"instance_type='{INSTANCE_TYPE}', instance_count=1, "
                 f"hyperparameters={{'use_ai_advisor': '', 'apply_recommendations': '', 'save_recommendations': '', 'epochs': 10, 'batch_size': 32, 'session_id': '{session_id}'}}, "
                 f"output_path='s3://curate-sagemaker-bucket-123456789012/curate/output/', wait=False"
                 f")"
@@ -119,7 +120,7 @@ async def train_logs(session_id: str):
         next_token = None
         seen_events = set()
         retry_count = 0
-        max_retries = 60  # Try for 3 minutes
+        max_retries = 600  # Try for 3 minutes
         
         yield f"data: Looking for logs in CloudWatch log group: {log_group}, stream: {log_stream}\n\n"
         
@@ -208,7 +209,7 @@ async def train_logs(session_id: str):
                 if retry_count >= max_retries:
                     break
         
-        yield f"data: Stopped monitoring logs after {max_retries * 3} seconds\n\n"
+        yield f"data: Stopped monitoring logs after {max_retries * 150} seconds\n\n"
     return StreamingResponse(log_stream(), media_type="text/event-stream")
 
 # Endpoint to extract test results after training
@@ -420,7 +421,7 @@ async def train_s3(zip_name: str, request: Request):
             hyperparameters=hyperparameters,
             output_path=output_path,
             return_estimator=True,
-            wait=False
+            wait=False  # Set to True to see output in terminal (blocks server)
         )
         # Try to obtain the job name; if not immediately available, continue with session_id only
         try:

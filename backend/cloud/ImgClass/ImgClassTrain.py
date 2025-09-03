@@ -10,8 +10,8 @@ tf.get_logger().setLevel('ERROR')
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 from tensorflow.keras import layers, models
 from tensorflow.keras.applications.efficientnet import preprocess_input
-from cloud.ImgClass.ImgClassData import ImgClassData
-from cloud.TrainingLog import TrainingLog
+from backend.cloud.ImgClass.ImgClassData import ImgClassData
+from backend.cloud.TrainingLog import TrainingLog
 
 
 class QuietProgressCallback(tf.keras.callbacks.Callback):
