@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 import os
 import zipfile
 from cloud.ImgClass.ImgClassData import ImgClassData
-from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi import FastAPI, File, UploadFile, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pathlib import Path
@@ -382,10 +382,16 @@ async def dataset_info(session_id: str):
     return result
 
 @app.post("/train-s3/{zip_name}")
-async def train_s3(zip_name: str):
+async def train_s3(zip_name: str, request: Request):
     """Trigger training for a dataset zip in S3 (curate/datasets/)."""
     import uuid
-    session_id = str(uuid.uuid4())
+    # Allow client to provide session_id for consistent streaming
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    client_session_id = body.get("session_id") if isinstance(body, dict) else None
+    session_id = client_session_id or str(uuid.uuid4())
     aws_helper = AWSHelper("curate-sagemaker-bucket-123456789012")
     s3_client = aws_helper.s3_client
     bucket = aws_helper.bucket
@@ -416,7 +422,14 @@ async def train_s3(zip_name: str):
             return_estimator=True,
             wait=False
         )
-        job_name = estimator.latest_training_job.name
+        # Try to obtain the job name; if not immediately available, continue with session_id only
+        try:
+            job_name = estimator.latest_training_job.name
+        except Exception:
+            try:
+                job_name = getattr(estimator, "_current_job_name", None) or "unknown"
+            except Exception:
+                job_name = "unknown"
         job_map = load_job_map()
         job_map[session_id] = job_name
         save_job_map(job_map)

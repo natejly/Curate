@@ -19,11 +19,8 @@ class AWSHelper:
         use_threads=True
     )
         self.session = sagemaker.Session()
-        # Optional: use a Git repo as source. Keep available via self.git_config.
-        self.git_config = {
-            "repo": "https://github.com/natejly/Curate.git",
-            "branch": "sagemaker-test"
-        }
+        # Optional: use a Git repo as source. Disabled by default to use local source_dir
+        self.git_config = None
         self.entrypoint = "cloud/train.py"
         self.role = "arn:aws:iam::974703727033:role/SageMakerExecutionRole"
         self.s3_path = None
@@ -52,7 +49,7 @@ class AWSHelper:
         else:
             print("⚠️ No OpenAI API key found - AI advisor will be disabled")
         
-        estimator = TensorFlow(
+        estimator_kwargs = dict(
             entry_point=self.entrypoint,
             source_dir="backend",  # Include all files in cloud directory
             # dependencies are handled by requirements.txt in source_dir
@@ -63,11 +60,13 @@ class AWSHelper:
             py_version="py310",
             hyperparameters=hyperparameters,
             environment=environment,  # Pass environment variables
-            git_config=self.git_config,
             output_path=output_path,
             base_job_name="curate-tf-job",
             sagemaker_session=self.session
         )
+        if self.git_config:
+            estimator_kwargs["git_config"] = self.git_config
+        estimator = TensorFlow(**estimator_kwargs)
 
         print(f"Starting SageMaker job with entrypoint '{self.entrypoint}' on {instance_count} x {instance_type}...")
         estimator.fit(wait=wait)

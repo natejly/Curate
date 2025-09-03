@@ -87,30 +87,28 @@ def main():
     """Main training function."""
     try:
         args = parse_args()
-        # Set up custom CloudWatch logging
-        import watchtower
-        import boto3
+        # Set up custom CloudWatch logging via watchtower, with graceful fallback
         cw_log_group = "/curate/training"
         cw_log_stream = args.session_id or "default-stream"
-        
-        # Configure watchtower with proper settings
-        cw_handler = watchtower.CloudWatchLogHandler(
-            log_group=cw_log_group, 
-            stream_name=cw_log_stream,
-            send_interval=1,  # Send logs every 1 second
-            max_batch_size=1,  # Send immediately, don't batch
-            create_log_group=True,  # Create log group if it doesn't exist
-            boto3_client=boto3.client('logs')
-        )
-        cw_handler.setLevel(logging.INFO)
-        
-        # Set formatter for better log messages
-        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-        cw_handler.setFormatter(formatter)
-
-        # Attach to root logger and ensure INFO level
-        logger.addHandler(cw_handler)
-        logger.setLevel(logging.INFO)
+        try:
+            import watchtower
+            import boto3
+            cw_handler = watchtower.CloudWatchLogHandler(
+                log_group=cw_log_group,
+                stream_name=cw_log_stream,
+                send_interval=1,
+                max_batch_size=1,
+                create_log_group=True,
+                boto3_client=boto3.client('logs')
+            )
+            cw_handler.setLevel(logging.INFO)
+            formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+            cw_handler.setFormatter(formatter)
+            logger.addHandler(cw_handler)
+            logger.setLevel(logging.INFO)
+            logger.info(f"Custom CloudWatch logging started for session {cw_log_stream}")
+        except ModuleNotFoundError:
+            logger.warning("watchtower not installed; using default SageMaker logs only")
 
         # Redirect stdout/stderr prints to logging so training progress is captured
         class _StreamToLogger:
@@ -125,7 +123,6 @@ def main():
         sys.stdout = _StreamToLogger(logging.INFO)
         sys.stderr = _StreamToLogger(logging.ERROR)
         
-        logger.info(f"Custom CloudWatch logging started for session {cw_log_stream}")
         logger.info("Starting SageMaker training job")
         logger.info(f"Arguments: {vars(args)}")
         
