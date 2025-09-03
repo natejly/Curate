@@ -13,15 +13,30 @@ export default function TrainingConsole() {
 
   useEffect(() => {
     if (!sessionId) return;
+    
+    console.log("Starting log stream for session:", sessionId);
     const eventSource = new EventSource(`http://localhost:8000/train-logs/${sessionId}`);
+    
     eventSource.onmessage = (e) => {
-      setConsoleLogs((prev) => prev + e.data);
+      console.log("Received log:", e.data);
+      setConsoleLogs((prev) => prev + e.data + "\n");
     };
-    eventSource.onerror = () => {
+    
+    eventSource.onerror = (error) => {
+      console.error("EventSource error:", error);
       eventSource.close();
-      setTrainStatus("Training finished or failed.");
+      setTrainStatus("Log streaming ended. Training may be finished or failed.");
     };
-    return () => eventSource.close();
+    
+    eventSource.onopen = () => {
+      console.log("Log stream connection opened");
+      setConsoleLogs("Connected to training logs...\n");
+    };
+    
+    return () => {
+      console.log("Closing log stream");
+      eventSource.close();
+    };
   }, [sessionId]);
 
   return (

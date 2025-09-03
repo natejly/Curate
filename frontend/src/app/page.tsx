@@ -215,8 +215,29 @@ export default function Home() {
                   setTrainStatus("No session ID found for training.");
                   return;
                 }
-                // Navigate to training console page with sessionId
-                router.push(`/training-console?sessionId=${sessionId}`);
+                
+                // Start SageMaker training with the uploaded dataset
+                try {
+                  const trainResponse = await fetch(`http://localhost:8000/train/${sessionId}`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" }
+                  });
+                  
+                  if (!trainResponse.ok) {
+                    const error = await trainResponse.json();
+                    setTrainStatus(`Training failed: ${error.detail || "Unknown error"}`);
+                    return;
+                  }
+                  
+                  const trainResult = await trainResponse.json();
+                  console.log("Training started:", trainResult);
+                  
+                  // Navigate to training console page with sessionId
+                  router.push(`/training-console?sessionId=${sessionId}`);
+                } catch (err) {
+                  setTrainStatus("Failed to start training. Check console for errors.");
+                  console.error("Training start error:", err);
+                }
               }}
               disabled={trainStatus === "Training started..."}
             >Train</button>

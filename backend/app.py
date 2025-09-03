@@ -59,111 +59,185 @@ async def available_datasets():
         return {"datasets": datasets}
     except Exception as e:
         return {"error": str(e)}
-@app.get("/train-logs/{session_id}")
+    
+
 @app.get("/train-logs/{session_id}")
 async def train_logs(session_id: str):
     import asyncio
-    import subprocess
-    import json
+    import os as _os
+    import re
+    from datetime import datetime
+    import time
+
+    def format_log_line(log_line: str) -> str:
+        """
+        Parse and format AWS CloudWatch log lines to show user-friendly output.
+
+        Expected format: "2025-09-03T18:53:07.831000+00:00 74381aef-2535-483f-88f1-6ac6e61cc2a2 2025-09-03 18:53:07,831 - INFO - Training log saved"
+
+        Returns: "[18:53:07] Training log saved"
+        """
+        try:
+            # Pattern to match the AWS log format
+            # Group 1: AWS timestamp (2025-09-03T18:53:07.831000+00:00)
+            # Group 2: Request ID (74381aef-2535-483f-88f1-6ac6e61cc2a2)
+            # Group 3: Log timestamp (2025-09-03 18:53:07,831)
+            # Group 4: Log level (INFO, ERROR, WARNING, etc.)
+            # Group 5: Actual message
+            pattern = r'^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}\+\d{2}:\d{2})\s+[a-f0-9-]+\s+(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2},\d{3})\s+-\s+(\w+)\s+-\s+(.+)$'
+
+            match = re.match(pattern, log_line.strip())
+            if match:
+                aws_timestamp, log_timestamp, log_level, message = match.groups()
+
+                # Convert AWS timestamp to local time
+                try:
+                    # Parse the AWS timestamp (it's in UTC)
+                    utc_time = datetime.fromisoformat(aws_timestamp.replace('Z', '+00:00'))
+                    # Convert to local time
+                    local_time = utc_time.astimezone()
+                    # Format as HH:MM:SS
+                    time_str = local_time.strftime('%H:%M:%S')
+                except Exception:
+                    # Fallback: use the log timestamp from the message
+                    time_str = log_timestamp.split()[1].split(',')[0] if ',' in log_timestamp else log_timestamp.split()[1]
+
+                level_emoji = {
+                    'INFO': '',
+                    'ERROR': '[ERROR]',
+                    'WARNING': '[WARNING]',
+                    'DEBUG': '[DEBUG]',
+                    'CRITICAL': '[CRITICAL]'
+                }.get(log_level.upper(), '📝')
+
+                # Clean up the message (remove extra whitespace)
+                clean_message = message.strip()
+
+                # Format the final output
+                return f"[{time_str}] {level_emoji} {clean_message}"
+
+        except Exception as e:
+            # If parsing fails, return the original line
+            print(f"[DEBUG] Failed to parse log line: {log_line} - Error: {e}")
+            return log_line.strip()
+
+    region = _os.environ.get('AWS_REGION') or _os.environ.get('AWS_DEFAULT_REGION') or 'us-east-1'
 
     async def log_stream():
-        print(f"[DEBUG] Launching logs for session: {session_id} using 'aws logs tail'")
+        print(f"[DEBUG] Starting custom CW log stream for session: {session_id} in {region}")
         
-        region = os.environ.get('AWS_REGION', 'us-east-1')
-        log_group_name = "/curate/training"
-        log_stream_name = None
-
-        # 1. Find the exact log stream name, waiting for it to be created
-        max_retries = 200
+        # Keep waiting and retrying indefinitely until logs appear or training finishes
         retry_count = 0
-        while retry_count < max_retries and not log_stream_name:
+        training_finished = False
+        
+        while not training_finished:
             try:
-                cmd_tail = [
-                    "aws", "logs", "tail", log_group_name,
+                # Try with specific log stream name first
+                process = await asyncio.create_subprocess_exec(
+                    "aws", "logs", "tail", "/curate/training",
                     "--region", region,
-                    "--log-stream-name-prefix", session_id,
-                    "--since", "1h",
                     "--follow",
-                    "--format", "detailed",   # or "json" / "short"
-                ]
-                print(f"[DEBUG] Running command: {' '.join(cmd_tail)}")
-                result = subprocess.run(cmd_tail, capture_output=True, text=True, check=True)
-                response = json.loads(result.stdout)
+                    "--log-stream-names", session_id,
+                    "--no-paginate",  # Add this flag
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                    env={**_os.environ, "AWS_PAGER": "", "PYTHONUNBUFFERED": "1"}  # Force unbuffered
+                )
                 
-                if response.get("logStreams"):
-                    log_stream_name = response["logStreams"][0]["logStreamName"]
-                    print(f"[DEBUG] Found log stream: {log_stream_name}")
-                else:
-                    yield f"data: Waiting for log stream for session '{session_id}'...\n\n"
-                    await asyncio.sleep(3)
+                # Wait a bit to see if process starts successfully
+                await asyncio.sleep(2)
+                yield f"data: Waiting for training to start\n\n"
+
+                if process.returncode is not None:
+                    # Process failed, wait and retry
                     retry_count += 1
-            except subprocess.CalledProcessError as e:
-                error_output = e.stderr
-                print(f"[ERROR] Error describing log streams: {error_output}")
-                if "ResourceNotFoundException" in error_output:
-                     yield f"data: Log group '{log_group_name}' not found. Waiting...\n\n"
-                else:
-                    yield f"data: AWS CLI Error: {error_output}\n\n"
-                await asyncio.sleep(5)
-                retry_count += 1
+                    await asyncio.sleep(5)  # Wait 5 seconds before retry
+                    continue
+                
+                # Process is running, start streaming logs
+                yield f"data: Connected to logs for session {session_id}\n\n"
+
+                last_heartbeat = asyncio.get_event_loop().time()
+                heartbeat_interval = 60  # Send heartbeat every 60 seconds for long training
+
+                while True:
+                    # Check if we need to send a heartbeat
+                    current_time = asyncio.get_event_loop().time()
+                    if current_time - last_heartbeat > heartbeat_interval:
+                        yield f"data: [HEARTBEAT] Training in progress for {session_id}...\n\n"
+                        last_heartbeat = current_time
+
+                    try:
+                        line = await process.stdout.readline()
+                    except Exception as read_error:
+                        print(f"[ERROR] Error reading line: {read_error}")
+                        await asyncio.sleep(1)
+                        continue
+
+                    if not line:
+                        # Check if the process has terminated
+                        if process.returncode is not None:
+                            yield f"data: Log stream ended (process exit code: {process.returncode})\n\n"
+                            # If process ended but we haven't seen "TRAINING FINISHED", retry
+                            if not training_finished:
+                                print(f"[DEBUG] Process ended but training not finished, will retry...")
+                                await asyncio.sleep(5)
+                                break  # Break inner loop to retry
+                            else:
+                                return  # Training finished, end stream
+                        # Process is still running but no data, wait a bit
+                        await asyncio.sleep(2)
+                        continue
+
+                    decoded_line = line.decode('utf-8', errors='replace').rstrip()
+                    if decoded_line.strip():  # Only send non-empty lines
+                        # Parse and format the log line
+                        formatted_line = format_log_line(decoded_line)
+
+                        if formatted_line:  # Only send if we successfully parsed it
+                            # Check for training completion
+                            if "TRAINING JOB COMPLETED" in formatted_line or "Training completed" in formatted_line:
+                                training_finished = True
+                                yield f"data: 🎉 {formatted_line}\n\n"
+                                yield f"data: Training completed for session {session_id}\n\n"
+                                return  # End the stream
+
+                            yield f"data: {formatted_line}\n\n"
+                
+                # If we get here from inner loop break, continue outer loop to retry
+                    
             except Exception as e:
-                print(f"[ERROR] An unexpected error occurred: {e}")
-                yield f"data: An unexpected error occurred: {e}\n\n"
-                await asyncio.sleep(5)
                 retry_count += 1
-
-        if not log_stream_name:
-            yield f"data: Could not find log stream for session {session_id} after waiting.\n\n"
-            return
-
-        # 2. Stream events using 'aws logs tail --follow'
-        yield f"data: Found log stream. Tailing logs from {log_group_name}/{log_stream_name}\n\n"
+                print(f"[ERROR] Log streaming error: {e}")
+                yield f"data: Connection error (attempt {retry_count}): {str(e)}\n\n"
+                yield f"data: Retrying in 10 seconds...\n\n"
+                await asyncio.sleep(10)
+            finally:
+                try:
+                    if 'process' in locals() and process and process.returncode is None:
+                        process.terminate()
+                        await asyncio.sleep(0.5)  # Give it time to terminate gracefully
+                        if process.returncode is None:
+                            process.kill()  # Force kill if it didn't terminate
+                        await process.wait()
+                except Exception as cleanup_error:
+                    print(f"[ERROR] Cleanup error: {cleanup_error}")
         
-        cmd_tail = [
-            "aws", "logs", "tail",
-            "--region", region,
-            log_group_name,
-            "--log-stream-names", log_stream_name,
-            "--follow"
-        ]
-        
-        process = None
-        try:
-            print(f"[DEBUG] Starting tail process: {' '.join(cmd_tail)}")
-            process = await asyncio.create_subprocess_exec(
-                *cmd_tail,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
-
-            # Read from stdout line by line
-            while True:
-                line = await process.stdout.readline()
-                if not line:
-                    break
-                yield f"data: {line.decode().strip()}\n\n"
-            
-            # Check for any errors after the process finishes
-            stderr_output = await process.stderr.read()
-            if stderr_output:
-                print(f"[ERROR] aws logs tail stderr: {stderr_output.decode()}")
-                yield f"data: Log streaming ended with an error.\n\n"
-
-        except asyncio.CancelledError:
-            print("[INFO] Client disconnected. Stopping log tailing.")
-            yield f"data: Client disconnected. Stopping logs.\n\n"
-        except Exception as e:
-            print(f"[ERROR] Failed to start or run 'aws logs tail': {e}")
-            yield f"data: Error starting log stream: {e}\n\n"
-        finally:
-            if process and process.returncode is None:
-                print("[INFO] Terminating 'aws logs tail' process.")
-                process.terminate()
-                await process.wait()
-        
-        print(f"[DEBUG] Log streaming finished for session {session_id}.")
-
-    return StreamingResponse(log_stream(), media_type="text/event-stream")
+        # This should never be reached due to the return statements above
+        yield f"data: Training stream ended for session {session_id}\n\n"
+    
+    # Return StreamingResponse with proper SSE headers
+    return StreamingResponse(
+        log_stream(), 
+        media_type="text/plain",  # Changed from text/event-stream
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "Content-Type": "text/event-stream",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Headers": "Cache-Control"
+        }
+    )
 
 # Endpoint to extract test results after training
 #@app.get("/train-results/{session_id}")
@@ -341,11 +415,30 @@ async def dataset_info(session_id: str):
         result = json.load(f)
     return result
 
+from typing import Optional
+from fastapi import Request
+
+# Support both styles: session_id in path or provided in JSON body
 @app.post("/train-s3/{zip_name}")
-async def train_s3(zip_name: str):
-    """Trigger training for a dataset zip in S3 (curate/datasets/)."""
-    import uuid
-    session_id = str(uuid.uuid4())
+@app.post("/train-s3/{zip_name}/{session_id}")
+async def train_s3(zip_name: str, request: Request, session_id: Optional[str] = None):
+    """Trigger training for a dataset zip in S3 (curate/datasets/) with a single client-provided session_id."""
+    # Prefer session_id from path parameter first, then from JSON body
+    if session_id is None:
+        try:
+            body = await request.json()
+            session_id = body.get("session_id") if isinstance(body, dict) else None
+        except Exception:
+            session_id = None
+    
+    # Only generate a new session_id if none was provided
+    if not session_id:
+        from uuid import uuid4
+        session_id = str(uuid4())
+        print(f"[DEBUG] Generated new session_id: {session_id}")
+    else:
+        print(f"[DEBUG] Using provided session_id: {session_id}")
+    
     aws_helper = AWSHelper("curate-sagemaker-bucket-123456789012")
     s3_client = aws_helper.s3_client
     bucket = aws_helper.bucket
@@ -382,3 +475,4 @@ async def train_s3(zip_name: str):
         return {"status": "Training Started", "session_id": session_id, "job_name": job_name}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Training failed: {str(e)}")
+
