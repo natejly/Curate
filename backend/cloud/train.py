@@ -7,6 +7,7 @@ import argparse
 import logging
 import os
 import sys
+import subprocess
 
 # Add directories to Python path for SageMaker environment
 sys.path.insert(0, os.path.dirname(__file__))  # Add current directory (cloud)
@@ -92,99 +93,49 @@ def parse_args():
 
 
 def setup_cloudwatch_logging(session_id):
-    """Set up CloudWatch logging using boto3 directly, with region detection."""
-    import boto3
-    import json
-    from datetime import datetime
-    import os as _os
-    
-    log_group = "/curate/training"
-    log_stream = session_id or "default-stream"
-    
+    """Set up CloudWatch logging using watchtower."""
     try:
-        region = _os.environ.get('AWS_REGION') or _os.environ.get('AWS_DEFAULT_REGION') or boto3.session.Session().region_name or 'us-east-1'
-        print(f"[DEBUG] Setting up CloudWatch logging with region: {region}")
-        logs_client = boto3.client('logs', region_name=region)
+        import watchtower
+        from logging import Formatter
         
-        # Create log group if it doesn't exist
-        try:
-            logs_client.create_log_group(logGroupName=log_group)
-        except logs_client.exceptions.ResourceAlreadyExistsException:
-            pass
+        log_group = "/curate/training"
+        log_stream = session_id if session_id else "default-training-stream"
+        region = os.environ.get('AWS_REGION', 'us-east-1')
+
+        print(f"[DEBUG] Setting up watchtower CloudWatch logging for group '{log_group}', stream '{log_stream}' in region '{region}'")
+
+        # Get the root logger
+        logger = logging.getLogger()
+        logger.setLevel(logging.INFO)
+
+        # Create a watchtower handler
+        handler = watchtower.CloudWatchLogHandler(
+            log_group_name=log_group,
+            log_stream_name=log_stream,
+            region_name=region,
+            create_log_group=True,
+            send_interval=5,
+            max_batch_count=1024,
+            max_batch_size=1048576,
+        )
         
-        # Create log stream if it doesn't exist
-        try:
-            logs_client.create_log_stream(logGroupName=log_group, logStreamName=log_stream)
-        except logs_client.exceptions.ResourceAlreadyExistsException:
-            pass
+        # Set a clear formatter
+        formatter = Formatter("%(asctime)s - %(levelname)s - %(message)s")
+        handler.setFormatter(formatter)
         
-        class CloudWatchHandler(logging.Handler):
-            def __init__(self, log_group, log_stream):
-                super().__init__()
-                self.log_group = log_group
-                self.log_stream = log_stream
-                self.logs_client = boto3.client('logs', region_name=region)
-                self.sequence_token = None
-                self.buffer = []
-                self.max_buffer_size = 1  # Send logs immediately for real-time streaming
-                
-            def emit(self, record):
-                try:
-                    log_message = self.format(record)
-                    timestamp = int(datetime.now().timestamp() * 1000)
-                    
-                    log_event = {
-                        'timestamp': timestamp,
-                        'message': log_message
-                    }
-                    
-                    self.buffer.append(log_event)
-                    
-                    # Send immediately for real-time streaming
-                    if len(self.buffer) >= self.max_buffer_size:
-                        self.flush_buffer()
-                        
-                except Exception as e:
-                    print(f"CloudWatch logging error: {e}")
-                    
-            def flush_buffer(self):
-                if not self.buffer:
-                    return
-                    
-                try:
-                    kwargs = {
-                        'logGroupName': self.log_group,
-                        'logStreamName': self.log_stream,
-                        'logEvents': self.buffer
-                    }
-                    
-                    if self.sequence_token:
-                        kwargs['sequenceToken'] = self.sequence_token
-                    
-                    response = self.logs_client.put_log_events(**kwargs)
-                    self.sequence_token = response.get('nextSequenceToken')
-                    self.buffer = []
-                    
-                except Exception as e:
-                    print(f"CloudWatch buffer flush error: {e}")
-                    # Reset buffer to prevent memory buildup
-                    self.buffer = []
-                    
-            def close(self):
-                self.flush_buffer()
-                super().close()
+        # Add the handler to the root logger
+        logger.addHandler(handler)
         
-        # Set up the custom handler
-        cw_handler = CloudWatchHandler(log_group, log_stream)
-        cw_handler.setLevel(logging.INFO)
-        formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-        cw_handler.setFormatter(formatter)
-        
-        return cw_handler
-        
+        print("[DEBUG] Watchtower CloudWatch handler configured and added to root logger.")
+        return True
+
+    except ImportError:
+        print("[ERROR] 'watchtower' package not found. Please install it (`pip install watchtower`) to enable CloudWatch logging.")
+        return False
     except Exception as e:
-        print(f"Failed to setup CloudWatch logging: {e}")
-        return None
+        print(f"[ERROR] Failed to setup watchtower CloudWatch logging: {e}")
+        return False
+
 
 
 def install_requirements():
