@@ -59,15 +59,77 @@ async def available_datasets():
         return {"datasets": datasets}
     except Exception as e:
         return {"error": str(e)}
-    
+
+
 
 @app.get("/train-logs/{session_id}")
 async def train_logs(session_id: str):
     import asyncio
     import os as _os
     import re
+    import json
     from datetime import datetime
     import time
+
+    def parse_epoch_metrics(log_line: str):
+        """Parse epoch metrics from log lines."""
+        try:
+            # Look for epoch lines like: "Epoch 1: loss=0.1234, acc=0.4567, val_loss=0.7890, val_acc=0.1234"
+            epoch_pattern = r'Epoch (\d+): loss=([0-9.]+), acc=([0-9.]+), val_loss=([0-9.]+), val_acc=([0-9.]+)'
+            match = re.search(epoch_pattern, log_line)
+            if match:
+                epoch, loss, acc, val_loss, val_acc = match.groups()
+                return {
+                    "epoch": int(epoch),
+                    "loss": float(loss),
+                    "accuracy": float(acc),
+                    "val_loss": float(val_loss),
+                    "val_accuracy": float(val_acc),
+                    "timestamp": datetime.now().isoformat()
+                }
+        except Exception as e:
+            print(f"Error parsing epoch metrics: {e}")
+        return None
+
+    def parse_stage_info(log_line: str):
+        """Parse stage information from log lines."""
+        try:
+            if "STAGE 1: Training with FROZEN backbone" in log_line:
+                return {"stage": 1, "type": "frozen", "message": "Stage 1: Frozen Backbone Training"}
+            elif "STAGE 2: Fine-tuning with UNFROZEN top layers" in log_line:
+                return {"stage": 2, "type": "fine_tuning", "message": "Stage 2: Fine-tuning"}
+            elif "TRAINING JOB COMPLETED" in log_line:
+                return {"stage": "completed", "type": "completed", "message": "Training Completed"}
+        except Exception as e:
+            print(f"Error parsing stage info: {e}")
+        return None
+
+    def parse_test_results(log_line: str):
+        """Parse final test results from log lines."""
+        try:
+            # Look for patterns like "Test results: {'loss': 0.1234, 'accuracy': 0.9876}"
+            test_result_pattern = r"Test results:\s*\{([^}]+)\}"
+            match = re.search(test_result_pattern, log_line)
+            if match:
+                results_str = match.group(1)
+                # Parse the dictionary string
+                results_dict = {}
+                # Split by comma and parse key-value pairs
+                pairs = [pair.strip() for pair in results_str.split(',')]
+                for pair in pairs:
+                    if ':' in pair:
+                        key, value = pair.split(':', 1)
+                        key = key.strip().strip("'\"")
+                        value = value.strip()
+                        try:
+                            # Try to convert to float
+                            results_dict[key] = float(value)
+                        except ValueError:
+                            results_dict[key] = value.strip("'\"")
+                return results_dict
+        except Exception as e:
+            print(f"Error parsing test results: {e}")
+        return None
 
     def format_log_line(log_line: str) -> str:
         """
@@ -124,12 +186,23 @@ async def train_logs(session_id: str):
     region = _os.environ.get('AWS_REGION') or _os.environ.get('AWS_DEFAULT_REGION') or 'us-east-1'
 
     async def log_stream():
-        print(f"[DEBUG] Starting custom CW log stream for session: {session_id} in {region}")
-        
+        print(f"[DEBUG] Starting integrated log and metrics stream for session: {session_id} in {region}")
+
+        # Initialize metrics tracking
+        metrics_data = {
+            "session_id": session_id,
+            "stage1_metrics": [],
+            "stage2_metrics": [],
+            "current_stage": 1,
+            "training_status": "initializing",
+            "stage_info": None,
+            "final_test_results": None
+        }
+
         # Keep waiting and retrying indefinitely until logs appear or training finishes
         retry_count = 0
         training_finished = False
-        
+
         while not training_finished:
             try:
                 # Try with specific log stream name first
@@ -143,29 +216,33 @@ async def train_logs(session_id: str):
                     stderr=asyncio.subprocess.PIPE,
                     env={**_os.environ, "AWS_PAGER": "", "PYTHONUNBUFFERED": "1"}  # Force unbuffered
                 )
-                
+
                 # Wait a bit to see if process starts successfully
                 await asyncio.sleep(2)
-                yield f"data: Waiting for training to start\n\n"
 
                 if process.returncode is not None:
                     # Process failed, wait and retry
                     retry_count += 1
                     await asyncio.sleep(5)  # Wait 5 seconds before retry
                     continue
-                
-                # Process is running, start streaming logs
-                yield f"data: Connected to logs for session {session_id}\n\n"
 
+                # Process is running, start streaming logs and metrics
                 last_heartbeat = asyncio.get_event_loop().time()
                 heartbeat_interval = 60  # Send heartbeat every 60 seconds for long training
+                last_metrics_update = asyncio.get_event_loop().time()
+                metrics_update_interval = 2  # Send metrics every 2 seconds
 
                 while True:
                     # Check if we need to send a heartbeat
                     current_time = asyncio.get_event_loop().time()
                     if current_time - last_heartbeat > heartbeat_interval:
-                        yield f"data: [HEARTBEAT] Training in progress for {session_id}...\n\n"
+                        yield f"data: {json.dumps({'type': 'log', 'message': f'[HEARTBEAT] Training in progress for {session_id}...'})}\n\n"
                         last_heartbeat = current_time
+
+                    # Send metrics update if needed
+                    if current_time - last_metrics_update > metrics_update_interval:
+                        yield f"data: {json.dumps({'type': 'metrics', 'data': metrics_data})}\n\n"
+                        last_metrics_update = current_time
 
                     try:
                         line = await process.stdout.readline()
@@ -177,7 +254,7 @@ async def train_logs(session_id: str):
                     if not line:
                         # Check if the process has terminated
                         if process.returncode is not None:
-                            yield f"data: Log stream ended (process exit code: {process.returncode})\n\n"
+                            yield f"data: {json.dumps({'type': 'log', 'message': f'Log stream ended (process exit code: {process.returncode})'})}\n\n"
                             # If process ended but we haven't seen "TRAINING FINISHED", retry
                             if not training_finished:
                                 print(f"[DEBUG] Process ended but training not finished, will retry...")
@@ -195,22 +272,48 @@ async def train_logs(session_id: str):
                         formatted_line = format_log_line(decoded_line)
 
                         if formatted_line:  # Only send if we successfully parsed it
+                            # Parse metrics from the log line
+                            epoch_data = parse_epoch_metrics(decoded_line)
+                            if epoch_data:
+                                if metrics_data["current_stage"] == 1:
+                                    metrics_data["stage1_metrics"].append(epoch_data)
+                                else:
+                                    metrics_data["stage2_metrics"].append(epoch_data)
+
+                            # Parse test results
+                            test_results = parse_test_results(decoded_line)
+                            if test_results:
+                                metrics_data["final_test_results"] = test_results
+                                print(f"[DEBUG] Parsed test results: {test_results}")
+
+                            # Parse stage information
+                            stage_data = parse_stage_info(decoded_line)
+                            if stage_data:
+                                if stage_data["stage"] == 2:
+                                    metrics_data["current_stage"] = 2
+                                elif stage_data["stage"] == "completed":
+                                    metrics_data["training_status"] = "completed"
+                                metrics_data["stage_info"] = stage_data
+
                             # Check for training completion
                             if "TRAINING JOB COMPLETED" in formatted_line or "Training completed" in formatted_line:
                                 training_finished = True
-                                yield f"data: 🎉 {formatted_line}\n\n"
-                                yield f"data: Training completed for session {session_id}\n\n"
+                                yield f"data: {json.dumps({'type': 'log', 'message': f'🎉 {formatted_line}'})}\n\n"
+                                yield f"data: {json.dumps({'type': 'log', 'message': f'Training completed for session {session_id}'})}\n\n"
+                                # Send final metrics
+                                yield f"data: {json.dumps({'type': 'metrics', 'data': metrics_data})}\n\n"
                                 return  # End the stream
 
-                            yield f"data: {formatted_line}\n\n"
-                
+                            # Send the log line
+                            yield f"data: {json.dumps({'type': 'log', 'message': formatted_line})}\n\n"
+
                 # If we get here from inner loop break, continue outer loop to retry
-                    
+
             except Exception as e:
                 retry_count += 1
                 print(f"[ERROR] Log streaming error: {e}")
-                yield f"data: Connection error (attempt {retry_count}): {str(e)}\n\n"
-                yield f"data: Retrying in 10 seconds...\n\n"
+                yield f"data: {json.dumps({'type': 'log', 'message': f'Connection error (attempt {retry_count}): {str(e)}'})}\n\n"
+                yield f"data: {json.dumps({'type': 'log', 'message': 'Retrying in 10 seconds...'})}\n\n"
                 await asyncio.sleep(10)
             finally:
                 try:
@@ -222,9 +325,9 @@ async def train_logs(session_id: str):
                         await process.wait()
                 except Exception as cleanup_error:
                     print(f"[ERROR] Cleanup error: {cleanup_error}")
-        
+
         # This should never be reached due to the return statements above
-        yield f"data: Training stream ended for session {session_id}\n\n"
+        yield f"data: {json.dumps({'type': 'log', 'message': f'Training stream ended for session {session_id}'})}\n\n"
     
     # Return StreamingResponse with proper SSE headers
     return StreamingResponse(

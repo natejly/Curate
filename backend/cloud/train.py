@@ -37,6 +37,8 @@ except RuntimeError:
     pass
 
 print(f"Using GPU:{gpus}" if gpus else "No GPU found, using CPU")
+# log gpu
+
 from ImgClass.ImgClassData import ImgClassData
 from ImgClass.ImgClassTrain import ImgClassTrainer
 from trainio import (
@@ -50,15 +52,13 @@ from trainio import (
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 # Use the root logger so all messages (including from other modules) can propagate
 logger = logging.getLogger()
-# Import AI advisor (optional)
+logger.info(f"Using GPU:{gpus}" if gpus else "No GPU found, using CPU")
 try:
     from advisor import TrainingAdvisor, create_advisor_summary
     AI_ADVISOR_AVAILABLE = True
 except ImportError:
     AI_ADVISOR_AVAILABLE = False
     logger.warning("AI Advisor not available. Install openai package to enable: pip install openai")
-
-
 
 
 def parse_args():
