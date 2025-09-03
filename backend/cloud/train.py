@@ -38,7 +38,8 @@ from trainio import (
     save_training_log,
     setup_model_directory
 )
-
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 # Import AI advisor (optional)
 try:
     from advisor import TrainingAdvisor, create_advisor_summary
@@ -47,8 +48,7 @@ except ImportError:
     AI_ADVISOR_AVAILABLE = False
     logger.warning("AI Advisor not available. Install openai package to enable: pip install openai")
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
+
 
 
 def parse_args():

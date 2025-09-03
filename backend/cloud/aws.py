@@ -19,9 +19,9 @@ class AWSHelper:
         use_threads=True
     )
         self.session = sagemaker.Session()
-        self.git_config = {
-            "repo": "https://github.com/natejly/Curate/tree/sagemaker-test",
-            "branch": "main"
+        git_config = {
+            "repo": "https://github.com/natejly/Curate.git",
+            "branch": "sagemaker-test"
         }
         self.entrypoint = "cloud/train.py"
         self.role = "arn:aws:iam::974703727033:role/SageMakerExecutionRole"
