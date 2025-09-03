@@ -3,15 +3,17 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbopack",
-    "build": "next build --turbopack",
+    "dev": "next dev",
+    "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "next lint"
   },
   "dependencies": {
     "next": "15.5.2",
     "react": "19.1.0",
     "react-dom": "19.1.0",
+    "axios": "^1.6.0",
+    "react-dropzone": "^14.2.3",
     "swr": "^2.3.6"
   },
   "devDependencies": {

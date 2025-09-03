@@ -64,7 +64,7 @@ export default function Home() {
       const formData = new FormData();
       formData.append("file", selectedZip);
       const xhr = new XMLHttpRequest();
-      xhr.open("POST", "http://localhost:8000/upload/zip", true);
+      xhr.open("POST", `${process.env.BACKEND_URL || 'http://localhost:8000'}/upload/zip`, true);
       xhr.upload.onprogress = (event) => {
         if (event.lengthComputable) {
           setUploadProgress(Math.round((event.loaded / event.total) * 100));
@@ -83,7 +83,7 @@ export default function Home() {
         if (sessionId) {
           // Fetch dataset info
           try {
-            const infoRes = await fetch(`http://localhost:8000/dataset-info/${sessionId}`);
+            const infoRes = await fetch(`${process.env.BACKEND_URL || 'http://localhost:8000'}/dataset-info/${sessionId}`);
             if (infoRes.ok) {
               const info = await infoRes.json();
               setDatasetInfo(info);
@@ -218,7 +218,7 @@ export default function Home() {
                 
                 // Start SageMaker training with the uploaded dataset
                 try {
-                  const trainResponse = await fetch(`http://localhost:8000/train/${sessionId}`, {
+                  const trainResponse = await fetch(`${process.env.BACKEND_URL || 'http://localhost:8000'}/train/${sessionId}`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" }
                   });

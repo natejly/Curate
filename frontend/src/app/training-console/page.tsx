@@ -15,7 +15,7 @@ export default function TrainingConsole() {
     if (!sessionId) return;
     
     console.log("Starting log stream for session:", sessionId);
-    const eventSource = new EventSource(`http://localhost:8000/train-logs/${sessionId}`);
+    const eventSource = new EventSource(`${process.env.BACKEND_URL || 'http://localhost:8000'}/train-logs/${sessionId}`);
     
     eventSource.onmessage = (e) => {
       console.log("Received log:", e.data);

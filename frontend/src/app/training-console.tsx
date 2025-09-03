@@ -13,7 +13,7 @@ export default function TrainingConsole() {
 
   useEffect(() => {
     if (!sessionId) return;
-    const eventSource = new EventSource(`http://localhost:8000/train-logs/${sessionId}`);
+    const eventSource = new EventSource(`${process.env.BACKEND_URL || 'http://localhost:8000'}/train-logs/${sessionId}`);
     eventSource.onmessage = (e) => {
       setConsoleLogs((prev) => prev + e.data);
     };
