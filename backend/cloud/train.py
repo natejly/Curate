@@ -6,6 +6,15 @@ SageMaker Training Script for Image Classification
 import argparse
 import logging
 import os
+import sys
+
+# Add directories to Python path for SageMaker environment
+sys.path.insert(0, os.path.dirname(__file__))  # Add current directory (cloud)
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))  # Add backend directory  
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))  # Add repository root
+
+print(f"Python path: {sys.path[:5]}")  # Debug: Show first 5 path entries
+print(f"Current working directory: {os.getcwd()}")  # Debug: Show current directory
 
 # Suppress TensorFlow verbose output
 import tensorflow as tf
@@ -38,7 +47,9 @@ from trainio import (
     save_training_log,
     setup_model_directory
 )
-
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+# Use the root logger so all messages (including from other modules) can propagate
+logger = logging.getLogger()
 # Import AI advisor (optional)
 try:
     from advisor import TrainingAdvisor, create_advisor_summary
@@ -47,8 +58,7 @@ except ImportError:
     AI_ADVISOR_AVAILABLE = False
     logger.warning("AI Advisor not available. Install openai package to enable: pip install openai")
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
+
 
 
 def parse_args():
@@ -81,35 +91,127 @@ def parse_args():
     return parser.parse_args()
 
 
+def setup_cloudwatch_logging(session_id):
+    """Set up CloudWatch logging using boto3 directly"""
+    import boto3
+    import json
+    from datetime import datetime
+    
+    log_group = "/curate/training"
+    log_stream = session_id or "default-stream"
+    
+    try:
+        logs_client = boto3.client('logs')
+        
+        # Create log group if it doesn't exist
+        try:
+            logs_client.create_log_group(logGroupName=log_group)
+        except logs_client.exceptions.ResourceAlreadyExistsException:
+            pass
+        
+        # Create log stream if it doesn't exist
+        try:
+            logs_client.create_log_stream(logGroupName=log_group, logStreamName=log_stream)
+        except logs_client.exceptions.ResourceAlreadyExistsException:
+            pass
+        
+        class CloudWatchHandler(logging.Handler):
+            def __init__(self, log_group, log_stream):
+                super().__init__()
+                self.log_group = log_group
+                self.log_stream = log_stream
+                self.logs_client = boto3.client('logs')
+                self.sequence_token = None
+                self.buffer = []
+                self.max_buffer_size = 1  # Send logs immediately for real-time streaming
+                
+            def emit(self, record):
+                try:
+                    log_message = self.format(record)
+                    timestamp = int(datetime.now().timestamp() * 1000)
+                    
+                    log_event = {
+                        'timestamp': timestamp,
+                        'message': log_message
+                    }
+                    
+                    self.buffer.append(log_event)
+                    
+                    # Send immediately for real-time streaming
+                    if len(self.buffer) >= self.max_buffer_size:
+                        self.flush_buffer()
+                        
+                except Exception as e:
+                    print(f"CloudWatch logging error: {e}")
+                    
+            def flush_buffer(self):
+                if not self.buffer:
+                    return
+                    
+                try:
+                    kwargs = {
+                        'logGroupName': self.log_group,
+                        'logStreamName': self.log_stream,
+                        'logEvents': self.buffer
+                    }
+                    
+                    if self.sequence_token:
+                        kwargs['sequenceToken'] = self.sequence_token
+                    
+                    response = self.logs_client.put_log_events(**kwargs)
+                    self.sequence_token = response.get('nextSequenceToken')
+                    self.buffer = []
+                    
+                except Exception as e:
+                    print(f"CloudWatch buffer flush error: {e}")
+                    # Reset buffer to prevent memory buildup
+                    self.buffer = []
+                    
+            def close(self):
+                self.flush_buffer()
+                super().close()
+        
+        # Set up the custom handler
+        cw_handler = CloudWatchHandler(log_group, log_stream)
+        cw_handler.setLevel(logging.INFO)
+        formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+        cw_handler.setFormatter(formatter)
+        
+        return cw_handler
+        
+    except Exception as e:
+        print(f"Failed to setup CloudWatch logging: {e}")
+        return None
+
+
 def main():
     """Main training function."""
     try:
         args = parse_args()
+        
         # Set up custom CloudWatch logging
-        import watchtower
-        import boto3
-        cw_log_group = "/curate/training"
-        cw_log_stream = args.session_id or "default-stream"
+        cw_handler = setup_cloudwatch_logging(args.session_id)
+        if cw_handler:
+            logger.addHandler(cw_handler)
+            logger.setLevel(logging.INFO)
+            logger.info(f"Custom CloudWatch logging started for session {args.session_id}")
+        else:
+            logger.warning("CloudWatch logging setup failed, using default logging")
+            logger.warning("watchtower not installed; using default SageMaker logs only")
+
+        # Redirect stdout/stderr prints to logging so training progress is captured
+        class _StreamToLogger:
+            def __init__(self, level):
+                self.level = level
+            def write(self, message):
+                msg = message.rstrip()
+                if msg:
+                    logging.getLogger().log(self.level, msg)
+            def flush(self):
+                pass
+        sys.stdout = _StreamToLogger(logging.INFO)
+        sys.stderr = _StreamToLogger(logging.ERROR)
         
-        # Configure watchtower with proper settings
-        cw_handler = watchtower.CloudWatchLogHandler(
-            log_group=cw_log_group, 
-            stream_name=cw_log_stream,
-            send_interval=1,  # Send logs every 1 second
-            max_batch_size=1,  # Send immediately, don't batch
-            create_log_group=True,  # Create log group if it doesn't exist
-            boto3_client=boto3.client('logs')
-        )
-        cw_handler.setLevel(logging.INFO)
-        
-        # Set formatter for better log messages
-        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-        cw_handler.setFormatter(formatter)
-        
-        logger.addHandler(cw_handler)
-        logger.setLevel(logging.INFO)
-        
-        logger.info(f"Custom CloudWatch logging started for session {cw_log_stream}")
         logger.info("Starting SageMaker training job")
         logger.info(f"Arguments: {vars(args)}")
         

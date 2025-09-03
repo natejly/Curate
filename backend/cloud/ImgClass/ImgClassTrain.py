@@ -1,6 +1,8 @@
 import sys, os
-# Add backend root to sys.path for flexible imports
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
+# Add parent directories to sys.path for SageMaker environment
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))  # Add cloud directory
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))  # Add backend directory
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', '..'))  # Add repository root
 
 from datetime import datetime
 
@@ -10,8 +12,8 @@ tf.get_logger().setLevel('ERROR')
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 from tensorflow.keras import layers, models
 from tensorflow.keras.applications.efficientnet import preprocess_input
-from cloud.ImgClass.ImgClassData import ImgClassData
-from cloud.TrainingLog import TrainingLog
+from ImgClass.ImgClassData import ImgClassData
+from TrainingLog import TrainingLog
 
 
 class QuietProgressCallback(tf.keras.callbacks.Callback):
