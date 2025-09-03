@@ -59,47 +59,35 @@ async def available_datasets():
         return {"datasets": datasets}
     except Exception as e:
         return {"error": str(e)}
-# SSE endpoint to stream training logs
 @app.get("/train-logs/{session_id}")
 async def train_logs(session_id: str):
     def log_stream():
         print(f"[DEBUG] Launching training logs for session: {session_id}")
-        # Try local session logs first
-        session_dir = TEMP_DIR / session_id
-        if session_dir.exists():
-            items = [item for item in session_dir.iterdir() if item.is_dir()]
-            if not items:
-                yield f"data: No dataset folder found after unzip\n\n"
-                return
-            dataset_root = str(items[0])
-            aws_helper = AWSHelper("curate-sagemaker-bucket-123456789012")
-            aws_helper.upload_zip(dataset_root, "curate/datasets/")
-            aws_helper.set_base_job_name(os.path.basename(dataset_root))
-            hyperparameters = {
-                'use_ai_advisor': '',
-                'apply_recommendations': '',
-                'save_recommendations': '',
-                'epochs': 10,
-                'batch_size': 32
-            }
-            output_path = f"s3://{aws_helper.bucket}/curate/output/"
-            process = subprocess.Popen(
-                [sys.executable, "-u", "-c",
-                 "from cloud.aws import AWSHelper; aws_helper = AWSHelper('curate-sagemaker-bucket-123456789012'); aws_helper.start_sagemaker_executor(instance_type='ml.g4dn.xlarge', instance_count=1, hyperparameters={'use_ai_advisor': '', 'apply_recommendations': '', 'save_recommendations': '', 'epochs': 10, 'batch_size': 32}, output_path='s3://curate-sagemaker-bucket-123456789012/curate/output/', wait=False)"],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True
-            )
-            for line in process.stdout:
-                yield f"data: {line}\n\n"
-            print("Training subprocess finished.")
-            # Continue to CloudWatch streaming below
+        
         # S3 job: stream SageMaker logs from CloudWatch
-        job_map = load_job_map()
-        job_name = job_map.get(session_id)
+        # Wait for job mapping to appear (training may have just started)
+        job_name = None
+        mapping_retry_count = 0
+        max_mapping_retries = 200  # Wait up to 10 minutes for job mapping to appear
+
+        while mapping_retry_count < max_mapping_retries and not job_name:
+            job_map = load_job_map()
+            job_name = job_map.get(session_id)
+            if not job_name:
+                mapping_retry_count += 1
+                if mapping_retry_count % 5 == 0:  # Every 15 seconds
+                    yield f"data: Waiting for training job to be created... ({mapping_retry_count * 3}s elapsed)\n\n"
+                print(f"[DEBUG] Job mapping not found yet, retrying... ({mapping_retry_count}/{max_mapping_retries})")
+                import time
+                time.sleep(3)
+            else:
+                print(f"[DEBUG] Found job mapping: {session_id} -> {job_name}")
+                break
+        
         if not job_name:
-            yield f"data: No SageMaker job found for session {session_id}.\n\n"
+            yield f"data: No SageMaker job found for session {session_id} after waiting {max_mapping_retries * 3} seconds.\n\n"
             return
+            
         import boto3
         import os as _os
         import time
@@ -174,40 +162,17 @@ async def train_logs(session_id: str):
         if not log_stream or not log_group:
             yield f"data: No log streams found for session {session_id} after waiting {max_boot_retries * 3} seconds (10 minutes).\n\n"
             return
+            
         next_token = None
         seen_events = set()
         retry_count = 0
         max_retries = 60  # Try for 3 minutes
         print(f"[DEBUG] log_group: {log_group}, log_stream: {log_stream}")
-        yield f"data: Looking for logs in CloudWatch log group: {log_group}, stream: {log_stream}\n\n"
+        yield f"data: Found logs! Streaming from CloudWatch log group: {log_group}, stream: {log_stream}\n\n"
+        
         while retry_count < max_retries:
             try:
-                print(f"[DEBUG] Checking for log group existence (attempt {retry_count})")
-                try:
-                    logs_client.describe_log_groups(logGroupNamePrefix=log_group)
-                    print(f"[DEBUG] Log group {log_group} exists.")
-                except logs_client.exceptions.ResourceNotFoundException:
-                    print(f"[DEBUG] Log group {log_group} not found.")
-                    if retry_count % 10 == 0:
-                        yield f"data: Log group {log_group} not found yet, waiting...\n\n"
-                    retry_count += 1
-                    time.sleep(3)
-                    continue
-                print(f"[DEBUG] Checking for log stream existence (attempt {retry_count})")
-                try:
-                    logs_client.describe_log_streams(
-                        logGroupName=log_group,
-                        logStreamNamePrefix=log_stream
-                    )
-                    print(f"[DEBUG] Log stream {log_stream} exists.")
-                except logs_client.exceptions.ResourceNotFoundException:
-                    print(f"[DEBUG] Log stream {log_stream} not found.")
-                    if retry_count % 10 == 0:
-                        yield f"data: Log stream {log_stream} not found yet, waiting for training to start...\n\n"
-                    retry_count += 1
-                    time.sleep(3)
-                    continue
-                print(f"[DEBUG] Fetching log events...")
+                print(f"[DEBUG] Fetching log events (attempt {retry_count})...")
                 kwargs = {
                     "logGroupName": log_group,
                     "logStreamName": log_stream,
@@ -215,9 +180,11 @@ async def train_logs(session_id: str):
                 }
                 if next_token:
                     kwargs["nextToken"] = next_token
+                    
                 response = logs_client.get_log_events(**kwargs)
                 events = response.get("events", [])
                 print(f"[DEBUG] Fetched {len(events)} events.")
+                
                 if events:
                     for event in events:
                         event_id = event["eventId"]
@@ -228,10 +195,12 @@ async def train_logs(session_id: str):
                     next_token = response.get("nextForwardToken")
                 else:
                     if retry_count % 10 == 0:
-                        print(f"[DEBUG] Log stream exists but no events yet.")
-                        yield f"data: Log stream exists but no events yet, waiting...\n\n"
+                        print(f"[DEBUG] Log stream exists but no new events yet.")
+                        yield f"data: Waiting for new log events...\n\n"
+                
                 retry_count += 1
                 time.sleep(3)
+                
             except Exception as e:
                 print(f"[DEBUG] Error streaming training logs: {str(e)}")
                 yield f"data: Error streaming training logs: {str(e)}\n\n"
@@ -239,8 +208,10 @@ async def train_logs(session_id: str):
                 time.sleep(3)
                 if retry_count >= max_retries:
                     break
+        
         print(f"[DEBUG] Stopped monitoring logs after {max_retries * 3} seconds.")
         yield f"data: Stopped monitoring logs after {max_retries * 3} seconds\n\n"
+    
     return StreamingResponse(log_stream(), media_type="text/event-stream")
 
 # Endpoint to extract test results after training
