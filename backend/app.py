@@ -63,93 +63,104 @@ async def available_datasets():
 @app.get("/train-logs/{session_id}")
 async def train_logs(session_id: str):
     import asyncio
-    async def log_stream():
-        print(f"[DEBUG] Launching training logs for session: {session_id}")
-        import boto3
-        import os as _os
-        print(f"[DEBUG] Connecting to CloudWatch logs...")
-        _region = _os.environ.get('AWS_REGION') or _os.environ.get('AWS_DEFAULT_REGION') or boto3.session.Session().region_name or 'us-east-1'
-        print(f"[DEBUG] Using AWS Region: {_region}")
-        logs_client = boto3.client("logs", region_name=_region)
+    import subprocess
+    import json
 
-        max_retries = 2000
-        retry_count = 0
+    async def log_stream():
+        print(f"[DEBUG] Launching logs for session: {session_id} using 'aws logs tail'")
+        
+        region = os.environ.get('AWS_REGION', 'us-east-1')
+        log_group_name = "/curate/training"
         log_stream_name = None
 
+        # 1. Find the exact log stream name, waiting for it to be created
+        max_retries = 200
+        retry_count = 0
         while retry_count < max_retries and not log_stream_name:
             try:
-                streams_response = logs_client.describe_log_streams(
-                    logGroupName="/curate/training",
-                    logStreamNamePrefix=session_id,
-                    limit=1
-                )
-                streams = streams_response.get("logStreams", [])
-                print(f"[DEBUG] describe_log_streams response: {streams_response}")
-            except Exception as e:
-                print(f"[DEBUG] Error calling describe_log_streams: {e}")
-                yield f"data: Error checking for log streams: {e}\n\n"
+                cmd_describe = [
+                    "aws", "logs", "describe-log-streams",
+                    "--region", region,
+                    "--log-group-name", log_group_name,
+                    "--log-stream-name-prefix", session_id,
+                    "--limit", "1"
+                ]
+                print(f"[DEBUG] Running command: {' '.join(cmd_describe)}")
+                result = subprocess.run(cmd_describe, capture_output=True, text=True, check=True)
+                response = json.loads(result.stdout)
+                
+                if response.get("logStreams"):
+                    log_stream_name = response["logStreams"][0]["logStreamName"]
+                    print(f"[DEBUG] Found log stream: {log_stream_name}")
+                else:
+                    yield f"data: Waiting for log stream for session '{session_id}'...\n\n"
+                    await asyncio.sleep(3)
+                    retry_count += 1
+            except subprocess.CalledProcessError as e:
+                error_output = e.stderr
+                print(f"[ERROR] Error describing log streams: {error_output}")
+                if "ResourceNotFoundException" in error_output:
+                     yield f"data: Log group '{log_group_name}' not found. Waiting...\n\n"
+                else:
+                    yield f"data: AWS CLI Error: {error_output}\n\n"
                 await asyncio.sleep(5)
                 retry_count += 1
-                continue
-                
-            if streams:
-                log_stream_name = streams[0]["logStreamName"]
-                print(f"[DEBUG] Found log stream: {log_stream_name}")
-            else:
-                yield f"data: Waiting for log stream {session_id}...\n\n"
-                await asyncio.sleep(3)
+            except Exception as e:
+                print(f"[ERROR] An unexpected error occurred: {e}")
+                yield f"data: An unexpected error occurred: {e}\n\n"
+                await asyncio.sleep(5)
                 retry_count += 1
 
         if not log_stream_name:
-            yield f"data: No log stream found for session {session_id} after waiting.\n\n"
+            yield f"data: Could not find log stream for session {session_id} after waiting.\n\n"
             return
 
-        yield f"data: Found logs! Streaming from CloudWatch log group: /curate/training, stream: {log_stream_name}\n\n"
-        next_token = None
-        seen_events = set()
-        event_retry_count = 0
-        max_event_retries = 200
+        # 2. Stream events using 'aws logs tail --follow'
+        yield f"data: Found log stream. Tailing logs from {log_group_name}/{log_stream_name}\n\n"
+        
+        cmd_tail = [
+            "aws", "logs", "tail",
+            "--region", region,
+            log_group_name,
+            "--log-stream-names", log_stream_name,
+            "--follow"
+        ]
+        
+        process = None
+        try:
+            print(f"[DEBUG] Starting tail process: {' '.join(cmd_tail)}")
+            process = await asyncio.create_subprocess_exec(
+                *cmd_tail,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
 
-        while event_retry_count < max_event_retries:
-            try:
-                print(f"[DEBUG] Fetching log events (attempt {event_retry_count})...")
-                kwargs = {
-                    "logGroupName": "/curate/training",
-                    "logStreamName": log_stream_name,
-                    "startFromHead": True
-                }
-                if next_token:
-                    kwargs["nextToken"] = next_token
-
-                response = logs_client.get_log_events(**kwargs)
-                events = response.get("events", [])
-                print(f"[DEBUG] Fetched {len(events)} events.")
-
-                if events:
-                    for event in events:
-                        event_id = event["eventId"]
-                        if event_id not in seen_events:
-                            seen_events.add(event_id)
-                            print(f"[DEBUG] Streaming log event: {event['message']}")
-                            yield f"data: {event['message']}\n\n"
-                    next_token = response.get("nextForwardToken")
-                else:
-                    if event_retry_count % 10 == 0:
-                        yield f"data: Waiting for new log events...\n\n"
-
-                event_retry_count += 1
-                await asyncio.sleep(3)
-
-            except Exception as e:
-                print(f"[DEBUG] Error streaming logs: {str(e)}")
-                yield f"data: Error streaming logs: {str(e)}\n\n"
-                event_retry_count += 1
-                await asyncio.sleep(3)
-                if event_retry_count >= max_event_retries:
+            # Read from stdout line by line
+            while True:
+                line = await process.stdout.readline()
+                if not line:
                     break
+                yield f"data: {line.decode().strip()}\n\n"
+            
+            # Check for any errors after the process finishes
+            stderr_output = await process.stderr.read()
+            if stderr_output:
+                print(f"[ERROR] aws logs tail stderr: {stderr_output.decode()}")
+                yield f"data: Log streaming ended with an error.\n\n"
 
-        print(f"[DEBUG] Stopped monitoring logs after {max_event_retries * 3} seconds.")
-        yield f"data: Stopped monitoring logs after {max_event_retries * 3} seconds\n\n"
+        except asyncio.CancelledError:
+            print("[INFO] Client disconnected. Stopping log tailing.")
+            yield f"data: Client disconnected. Stopping logs.\n\n"
+        except Exception as e:
+            print(f"[ERROR] Failed to start or run 'aws logs tail': {e}")
+            yield f"data: Error starting log stream: {e}\n\n"
+        finally:
+            if process and process.returncode is None:
+                print("[INFO] Terminating 'aws logs tail' process.")
+                process.terminate()
+                await process.wait()
+        
+        print(f"[DEBUG] Log streaming finished for session {session_id}.")
 
     return StreamingResponse(log_stream(), media_type="text/event-stream")
 
