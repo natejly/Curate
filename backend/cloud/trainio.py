@@ -12,6 +12,7 @@ import numpy as np
 import tensorflow as tf
 import shutil
 from datetime import datetime
+import tf2onnx
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -144,44 +145,73 @@ def save_training_log(trainer, model_dir):
 
 
 def save_model_with_tensor_fix(trainer, model_dir):
-    """Save model with TensorFlow compatibility fixes for SageMaker."""
+    """Save model with TensorFlow compatibility fixes for SageMaker and ONNX export."""
     try:
         os.makedirs(model_dir, exist_ok=True)
         was_eager = tf.executing_eagerly()
         if was_eager:
             logger.info("Temporarily disabling eager execution for model saving")
-            
+
         # Use SageMaker-compatible numeric directory name for serving
         save_attempts = [('00000001', 'tf'), ('model.h5', 'h5'), ('model.keras', None)]
-        
+        tf_model_saved = False
+        tf_model_path = None
+
         for filename, save_format in save_attempts:
             model_path = os.path.join(model_dir, filename)
             try:
                 logger.info(f"Attempting to save model to {model_path} (format: {save_format or 'keras'})")
                 tf.keras.backend.clear_session()
-                
+
                 if save_format == 'tf':
                     tf.saved_model.save(trainer.model, model_path)
+                    tf_model_saved = True
+                    tf_model_path = model_path
                 elif save_format:
                     trainer.model.save(model_path, save_format=save_format)
+                    if save_format == 'tf':
+                        tf_model_saved = True
+                        tf_model_path = model_path
                 else:
                     trainer.model.save(model_path)
-                    
-                logger.info("Model saved successfully")
-                
+                    tf_model_saved = True
+                    tf_model_path = model_path
+
+                logger.info("TensorFlow model saved successfully")
+
                 # Log file/directory size
                 if os.path.isfile(model_path):
                     file_size = os.path.getsize(model_path) / (1024 * 1024)
                     logger.info(f"Model file size: {file_size:.2f} MB")
                 elif os.path.isdir(model_path):
-                    total_size = sum(os.path.getsize(os.path.join(dirpath, filename)) 
-                                   for dirpath, dirnames, filenames in os.walk(model_path) 
+                    total_size = sum(os.path.getsize(os.path.join(dirpath, filename))
+                                   for dirpath, dirnames, filenames in os.walk(model_path)
                                    for filename in filenames)
                     dir_size = total_size / (1024 * 1024)
                     logger.info(f"Model directory size: {dir_size:.2f} MB")
-                    
+
+                # Convert to ONNX format
+                if tf_model_saved and tf_model_path:
+                    try:
+                        onnx_path = os.path.join(model_dir, 'model.onnx')
+                        logger.info(f"Converting model to ONNX format: {onnx_path}")
+
+                        # Convert TensorFlow model to ONNX
+                        spec = (tf.TensorSpec((None, *trainer.model.input_shape[1:]), tf.float32, name="input"),)
+                        model_proto, _ = tf2onnx.convert.from_keras(trainer.model, input_signature=spec, opset=13)
+
+                        # Save ONNX model
+                        with open(onnx_path, "wb") as f:
+                            f.write(model_proto.SerializeToString())
+
+                        onnx_size = os.path.getsize(onnx_path) / (1024 * 1024)
+                        logger.info(f"ONNX model saved successfully: {onnx_size:.2f} MB")
+
+                    except Exception as onnx_error:
+                        logger.warning(f"Failed to convert model to ONNX: {str(onnx_error)}")
+
                 return
-                
+
             except Exception as format_error:
                 logger.warning(f"Failed to save in {save_format or 'keras'} format: {str(format_error)}")
                 if os.path.exists(model_path):
@@ -190,12 +220,12 @@ def save_model_with_tensor_fix(trainer, model_dir):
                     elif os.path.isdir(model_path):
                         shutil.rmtree(model_path)
                 continue
-                
+
         # If all standard formats failed, try weights only
         logger.info("All standard formats failed, attempting to save weights only")
         weights_path = os.path.join(model_dir, 'model_weights.h5')
         trainer.model.save_weights(weights_path)
-        
+
         # Save architecture separately
         architecture_path = os.path.join(model_dir, 'model_architecture.json')
         try:
@@ -204,11 +234,11 @@ def save_model_with_tensor_fix(trainer, model_dir):
                 f.write(model_json)
         except Exception as json_error:
             logger.warning(f"Could not save model architecture as JSON: {str(json_error)}")
-            
+
         logger.info("Model weights and architecture saved successfully")
         weights_size = os.path.getsize(weights_path) / (1024 * 1024)
         logger.info(f"Model weights size: {weights_size:.2f} MB")
-        
+
     except Exception as e:
         logger.error(f"Failed to save model in any format: {str(e)}")
         raise
