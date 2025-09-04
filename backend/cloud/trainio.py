@@ -112,10 +112,18 @@ def parse_s3_path(s3_path):
     return bucket, key
 
 
-def save_training_log(trainer, model_dir):
+def save_training_log(trainer, model_dir, session_id=None):
     """Save training log to model directory with error handling."""
-    training_log_path = os.path.join(model_dir, 'training_log.json')
-    logger.info(f"Saving training log to: {training_log_path}")
+    if session_id:
+        # Create session-specific logs directory
+        logs_dir = os.path.join(os.path.dirname(model_dir), 'logs', session_id)
+        os.makedirs(logs_dir, exist_ok=True)
+        training_log_path = os.path.join(logs_dir, 'training_log.json')
+        logger.info(f"Saving training log to session path: {training_log_path}")
+    else:
+        # Fallback to original behavior
+        training_log_path = os.path.join(model_dir, 'training_log.json')
+        logger.info(f"Saving training log to: {training_log_path}")
     
     try:
         trainer.training_log.save(training_log_path)
@@ -263,9 +271,9 @@ def save_model_with_tensor_fix(trainer, model_dir, dataset_name=None):
         raise
 
 
-def save_model(trainer, model_dir, dataset_name=None):
+def save_model(trainer, model_dir):
     """Main model saving function."""
-    save_model_with_tensor_fix(trainer, model_dir, dataset_name)
+    save_model_with_tensor_fix(trainer, model_dir, trainer.dataset_name)
 
 
 def setup_model_directory(args):

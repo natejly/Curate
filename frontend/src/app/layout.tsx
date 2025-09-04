@@ -35,6 +35,12 @@ function AppSidebar() {
         >
           Training
         </Link>
+        <Link
+          href="/models"
+          className="text-left px-2 py-2 rounded hover:bg-gray-800"
+        >
+          Models
+        </Link>
       </nav>
     </div>
   );

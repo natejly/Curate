@@ -62,6 +62,277 @@ async def available_datasets():
 
 
 
+@app.get("/debug-training-log/{session_id}")
+async def debug_training_log(session_id: str):
+    """Debug endpoint to view raw training log content."""
+    import boto3
+    from botocore.exceptions import ClientError
+
+    try:
+        # Initialize S3 client
+        s3_client = boto3.client('s3')
+        bucket_name = "curate-sagemaker-bucket-123456789012"
+
+        # Try to get the training log from S3
+        training_log_key = f"curate/logs/{session_id}/training_log.json"
+
+        try:
+            response = s3_client.get_object(Bucket=bucket_name, Key=training_log_key)
+            log_content = response['Body'].read().decode('utf-8')
+
+            # Try to parse as JSON to see structure
+            try:
+                log_data = json.loads(log_content)
+                return {
+                    "session_id": session_id,
+                    "log_found": True,
+                    "log_size": len(log_content),
+                    "parsed_successfully": True,
+                    "structure": str(type(log_data)),
+                    "keys": list(log_data.keys()) if isinstance(log_data, dict) else "Not a dict",
+                    "sample_content": str(log_data)[:500] + "..." if len(str(log_data)) > 500 else str(log_data)
+                }
+            except json.JSONDecodeError as e:
+                return {
+                    "session_id": session_id,
+                    "log_found": True,
+                    "log_size": len(log_content),
+                    "parsed_successfully": False,
+                    "json_error": str(e),
+                    "raw_content": log_content[:500] + "..." if len(log_content) > 500 else log_content
+                }
+
+        except ClientError as e:
+            if e.response['Error']['Code'] == 'NoSuchKey':
+                return {"error": f"Training log not found for session {session_id}"}
+            else:
+                return {"error": f"S3 error: {e.response['Error']['Message']}"}
+
+    except Exception as e:
+        return {"error": f"Failed to debug training log: {str(e)}"}
+
+@app.get("/model-stats/{session_id}")
+async def get_model_stats(session_id: str):
+    """Get training statistics for a specific model."""
+    import boto3
+    from botocore.exceptions import ClientError
+
+    try:
+        # Initialize S3 client
+        s3_client = boto3.client('s3')
+        bucket_name = "curate-sagemaker-bucket-123456789012"
+
+        # Try to get the training log from S3
+        training_log_key = f"curate/logs/{session_id}/training_log.json"
+
+        try:
+            response = s3_client.get_object(Bucket=bucket_name, Key=training_log_key)
+            log_content = response['Body'].read().decode('utf-8')
+            log_data = json.loads(log_content)
+        except ClientError as e:
+            if e.response['Error']['Code'] == 'NoSuchKey':
+                return {"error": f"Training log not found for session {session_id}"}
+            else:
+                return {"error": f"S3 error: {e.response['Error']['Message']}"}
+        except json.JSONDecodeError:
+            return {"error": "Invalid training log format"}
+
+        # Parse the training log to extract final stats
+        stats = parse_training_stats(log_data)
+
+        return {
+            "session_id": session_id,
+            "stats": stats
+        }
+
+    except Exception as e:
+        return {"error": f"Failed to get model stats: {str(e)}"}
+
+def parse_training_stats(log_data):
+    """Parse training log data to extract final statistics."""
+    try:
+        stats = {
+            "final_accuracy": None,
+            "final_loss": None,
+            "final_val_accuracy": None,
+            "final_val_loss": None,
+            "total_epochs": 0,
+            "best_epoch": None,
+            "training_time": None,
+            "dataset_name": None,
+            "img_size": None,
+            "num_classes": None,
+            "base_model_name": None,
+        }
+
+        # Try to extract from the log data structure
+        if isinstance(log_data, dict):
+            # Handle the actual TrainingLog structure
+            # The log contains iterations with different formats
+            latest_iteration = None
+            latest_timestamp = None
+
+            for iteration_key, iteration_data in log_data.items():
+                if isinstance(iteration_data, dict) and 'timestamp' in iteration_data:
+                    if latest_timestamp is None or iteration_data['timestamp'] > latest_timestamp:
+                        latest_timestamp = iteration_data['timestamp']
+                        latest_iteration = iteration_data
+
+            if latest_iteration:
+                # Extract parameters
+                if 'params' in latest_iteration:
+                    params = latest_iteration['params']
+                    stats['dataset_name'] = params.get('dataset_name')
+                    stats['img_size'] = params.get('img_size')
+                    stats['num_classes'] = params.get('num_classes')
+                    stats['base_model_name'] = params.get('base_model_name')
+
+                # Extract training history based on training type
+                training_type = latest_iteration.get('training_type', 'single_stage')
+
+                if training_type == 'two_stage':
+                    # Two-stage training
+                    if 'stage2_logs' in latest_iteration and latest_iteration['stage2_logs']:
+                        history = latest_iteration['stage2_logs']
+                    elif 'stage1_logs' in latest_iteration and latest_iteration['stage1_logs']:
+                        history = latest_iteration['stage1_logs']
+                    else:
+                        history = None
+                else:
+                    # Single-stage training
+                    history = latest_iteration.get('logs')
+
+                if history:
+                    # Get final metrics
+                    if 'accuracy' in history and isinstance(history['accuracy'], list) and history['accuracy']:
+                        stats['final_accuracy'] = history['accuracy'][-1]
+                    if 'loss' in history and isinstance(history['loss'], list) and history['loss']:
+                        stats['final_loss'] = history['loss'][-1]
+                    if 'val_accuracy' in history and isinstance(history['val_accuracy'], list) and history['val_accuracy']:
+                        stats['final_val_accuracy'] = history['val_accuracy'][-1]
+                    if 'val_loss' in history and isinstance(history['val_loss'], list) and history['val_loss']:
+                        stats['final_val_loss'] = history['val_loss'][-1]
+
+                    # Get total epochs
+                    if 'accuracy' in history and isinstance(history['accuracy'], list):
+                        stats['total_epochs'] = len(history['accuracy'])
+
+                    # Find best epoch (highest validation accuracy)
+                    if 'val_accuracy' in history and isinstance(history['val_accuracy'], list) and history['val_accuracy']:
+                        best_val_acc = max(history['val_accuracy'])
+                        stats['best_epoch'] = history['val_accuracy'].index(best_val_acc) + 1
+
+                # Extract test metrics if available
+                if training_type == 'two_stage' and 'test_metrics' in latest_iteration:
+                    test_metrics = latest_iteration['test_metrics']
+                    if test_metrics:
+                        # Override with test metrics if available
+                        if 'accuracy' in test_metrics:
+                            stats['final_accuracy'] = test_metrics['accuracy']
+                        if 'loss' in test_metrics:
+                            stats['final_loss'] = test_metrics['loss']
+                        if 'val_accuracy' in test_metrics:
+                            stats['final_val_accuracy'] = test_metrics['val_accuracy']
+                        if 'val_loss' in test_metrics:
+                            stats['final_val_loss'] = test_metrics['val_loss']
+                elif training_type == 'single_stage' and 'test' in latest_iteration:
+                    test_metrics = latest_iteration['test']
+                    if test_metrics:
+                        # Override with test metrics if available
+                        if 'accuracy' in test_metrics:
+                            stats['final_accuracy'] = test_metrics['accuracy']
+                        if 'loss' in test_metrics:
+                            stats['final_loss'] = test_metrics['loss']
+                        if 'val_accuracy' in test_metrics:
+                            stats['final_val_accuracy'] = test_metrics['val_accuracy']
+                        if 'val_loss' in test_metrics:
+                            stats['final_val_loss'] = test_metrics['val_loss']
+
+        return stats
+
+    except Exception as e:
+        print(f"Error parsing training stats: {e}")
+        import traceback
+        traceback.print_exc()
+        return {
+            "final_accuracy": None,
+            "final_loss": None,
+            "final_val_accuracy": None,
+            "final_val_loss": None,
+            "total_epochs": 0,
+            "best_epoch": None,
+            "training_time": None,
+            "dataset_name": None,
+            "img_size": None,
+            "num_classes": None,
+            "base_model_name": None,
+        }
+
+@app.get("/list-models")
+async def list_models():
+    """List all trained ONNX models from S3 bucket, similar to available datasets."""
+    import boto3
+    from botocore.exceptions import ClientError
+
+    try:
+        # Initialize S3 client
+        s3_client = boto3.client('s3')
+        bucket_name = "curate-sagemaker-bucket-123456789012"
+
+        # List all objects in the models directory
+        response = s3_client.list_objects_v2(
+            Bucket=bucket_name,
+            Prefix="curate/models/"
+        )
+
+        if 'Contents' not in response:
+            return {"models": []}
+
+        # Find ONNX files for each session
+        models = []
+        session_onnx_files = {}  # Track latest ONNX file per session
+
+        for obj in response['Contents']:
+            key = obj['Key']
+            if key.endswith('/') or not key.startswith('curate/models/'):
+                continue
+
+            # Parse session ID and model name from key
+            # Key format: curate/models/{session_id}/{model_name}
+            parts = key.split('/')
+            if len(parts) >= 4:  # curate/models/session_id/model_name
+                session_id = parts[2]
+                model_name = '/'.join(parts[3:])
+
+                # Only include ONNX files (skip training logs and other files)
+                if model_name.endswith('.onnx') and model_name != "training_log.json" and not model_name.startswith("__"):
+                    # Keep track of the latest ONNX file for each session
+                    if session_id not in session_onnx_files or obj['LastModified'] > session_onnx_files[session_id]['LastModified']:
+                        session_onnx_files[session_id] = {
+                            "session_id": session_id,
+                            "filename": model_name,
+                            "s3_key": key,
+                            "size": obj['Size'],
+                            "last_modified": obj['LastModified'].isoformat(),
+                            "url": f"https://{bucket_name}.s3.amazonaws.com/{key}"
+                        }
+
+        # Convert to list and sort by last modified (newest first)
+        models = list(session_onnx_files.values())
+        models.sort(key=lambda x: x['last_modified'], reverse=True)
+
+        return {"models": models}
+
+    except ClientError as e:
+        if e.response['Error']['Code'] == 'NoSuchBucket':
+            return {"error": f"S3 bucket '{bucket_name}' not found. Please check your S3 configuration."}
+        elif e.response['Error']['Code'] == 'AccessDenied':
+            return {"error": "Access denied to S3 bucket. Please check your AWS credentials and permissions."}
+        else:
+            return {"error": f"S3 error: {e.response['Error']['Message']}"}
+    except Exception as e:
+        return {"error": f"Failed to list models: {str(e)}"}
+
 @app.post("/upload-models/{session_id}")
 async def upload_models_endpoint(session_id: str):
     """Manually upload models for a session to S3."""
@@ -103,7 +374,7 @@ async def upload_models_endpoint(session_id: str):
         return {"error": f"Failed to upload models: {str(e)}"}
 
 @app.get("/download-model/{session_id}")
-async def download_model(session_id: str, format: str = "onnx"):
+async def download_model(session_id: str, filename: str = None):
     """Download trained model from S3."""
     import boto3
     from botocore.exceptions import ClientError
@@ -113,15 +384,33 @@ async def download_model(session_id: str, format: str = "onnx"):
         s3_client = boto3.client('s3')
         bucket_name = "curate-sagemaker-bucket-123456789012"
 
-        # Construct model path based on our new naming convention
-        if format == "onnx":
-            model_key = f"curate/models/{session_id}/model.onnx"
-            filename = f"{session_id}_model.onnx"
-        elif format == "tf":
-            model_key = f"curate/models/{session_id}/model/"
-            filename = f"{session_id}_model.zip"
+        # If no filename provided, try to find the ONNX file for this session
+        if not filename:
+            # List objects in the session directory to find the ONNX file
+            response = s3_client.list_objects_v2(
+                Bucket=bucket_name,
+                Prefix=f"curate/models/{session_id}/"
+            )
+
+            if 'Contents' not in response:
+                return {"error": f"No models found for session {session_id}"}
+
+            # Find the ONNX file
+            onnx_file = None
+            for obj in response['Contents']:
+                key = obj['Key']
+                if key.endswith('.onnx') and not key.endswith('/') and 'training_log' not in key:
+                    onnx_file = key
+                    filename = key.split('/')[-1]  # Extract filename from path
+                    break
+
+            if not onnx_file:
+                return {"error": f"No ONNX model found for session {session_id}"}
+
+            model_key = onnx_file
         else:
-            return {"error": f"Unsupported format: {format}. Use 'onnx' or 'tf'"}
+            # Use the provided filename
+            model_key = f"curate/models/{session_id}/{filename}"
 
         # Check if the file exists in S3
         try:

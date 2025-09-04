@@ -162,6 +162,24 @@ def upload_models_to_s3(session_id: str):
                 uploaded_files.append(f"s3://{aws_helper.bucket}/{s3_key}")
                 logger.info(f"Model file uploaded to: s3://{aws_helper.bucket}/{s3_key}")
 
+        # Upload training log if it exists
+        training_log_path = models_dir / "training_log.json"
+        if training_log_path.exists():
+            logger.info(f"Uploading training log: training_log.json")
+            s3_key = f"curate/logs/{session_id}/training_log.json"
+            aws_helper.upload_file(str(training_log_path), s3_key)
+            uploaded_files.append(f"s3://{aws_helper.bucket}/{s3_key}")
+            logger.info(f"Training log uploaded to: s3://{aws_helper.bucket}/{s3_key}")
+
+        # Upload any other log files in the session directory
+        for log_file in models_dir.glob("*.json"):
+            if log_file.name != "training_log.json":  # Already handled above
+                logger.info(f"Uploading log file: {log_file.name}")
+                s3_key = f"curate/logs/{session_id}/{log_file.name}"
+                aws_helper.upload_file(str(log_file), s3_key)
+                uploaded_files.append(f"s3://{aws_helper.bucket}/{s3_key}")
+                logger.info(f"Log file uploaded to: s3://{aws_helper.bucket}/{s3_key}")
+
         if uploaded_files:
             logger.info(f"Successfully uploaded {len(uploaded_files)} model files to S3")
             for file_url in uploaded_files:

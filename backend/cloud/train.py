@@ -353,7 +353,7 @@ def main():
         logger.info(f"Model directory: {model_dir}")
         
         # Save training log first (independent of model saving)
-        save_training_log(trainer, model_dir)
+        save_training_log(trainer, model_dir, getattr(args, 'session_id', None))
         logger.info("Training log saved")
         
         # Then save the model

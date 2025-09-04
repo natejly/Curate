@@ -50,6 +50,9 @@ class ImgClassTrainer:
         self.val_dir = self.parser.val_dir
         self.test_dir = self.parser.test_dir
 
+        # Extract dataset name from path
+        self.dataset_name = self.parser.dataset_name
+
         # Config
         self.base_model_name = base_model_name
         self.batch_size = batch_size
@@ -82,6 +85,7 @@ class ImgClassTrainer:
         self.metrics = None
         self.history_stage1 = None
         self.history_stage2 = None
+        self.dataset_name = None
         
         # Training log integration
         self.training_log = TrainingLog()
@@ -343,6 +347,8 @@ class ImgClassTrainer:
             "img_size": self.IMG_SIZE,
             "custom_img_size": self.custom_img_size,
             "unfreeze_percent": self.unfreeze_percent,
+            "dataset_name": getattr(self, 'dataset_name', None),
+            "num_classes": self.NUM_CLASSES,
         }
         
         # Only include fine-tuning parameters if dual_stage is True

@@ -49,6 +49,7 @@ class ImgClassData:
         self.test_folders = test_folders
         
         # Set directory paths
+        self.dataset_name = os.path.basename(filepath)
         self.train_dir = os.path.dirname(train_folders[0]) if train_folders else None
         self.val_dir = os.path.dirname(val_folders[0]) if val_folders else None
         self.test_dir = os.path.dirname(test_folders[0]) if test_folders else None
