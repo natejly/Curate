@@ -144,7 +144,7 @@ def save_training_log(trainer, model_dir):
             logger.error(f"Fallback training log save also failed: {str(fallback_error)}")
 
 
-def save_model_with_tensor_fix(trainer, model_dir):
+def save_model_with_tensor_fix(trainer, model_dir, dataset_name=None):
     """Save model with TensorFlow compatibility fixes for SageMaker and ONNX export."""
     try:
         os.makedirs(model_dir, exist_ok=True)
@@ -152,8 +152,20 @@ def save_model_with_tensor_fix(trainer, model_dir):
         if was_eager:
             logger.info("Temporarily disabling eager execution for model saving")
 
-        # Use SageMaker-compatible numeric directory name for serving
-        save_attempts = [('00000001', 'tf'), ('model.h5', 'h5'), ('model.keras', None)]
+        # Create descriptive model names
+        if dataset_name:
+            tf_model_name = f"{dataset_name}_model"
+            h5_model_name = f"{dataset_name}_model.h5"
+            keras_model_name = f"{dataset_name}_model.keras"
+            onnx_model_name = f"{dataset_name}_model.onnx"
+        else:
+            tf_model_name = "model"
+            h5_model_name = "model.h5"
+            keras_model_name = "model.keras"
+            onnx_model_name = "model.onnx"
+
+        # Save attempts with descriptive names
+        save_attempts = [(tf_model_name, 'tf'), (h5_model_name, 'h5'), (keras_model_name, None)]
         tf_model_saved = False
         tf_model_path = None
 
@@ -193,7 +205,7 @@ def save_model_with_tensor_fix(trainer, model_dir):
                 # Convert to ONNX format
                 if tf_model_saved and tf_model_path:
                     try:
-                        onnx_path = os.path.join(model_dir, 'model.onnx')
+                        onnx_path = os.path.join(model_dir, onnx_model_name)
                         logger.info(f"Converting model to ONNX format: {onnx_path}")
 
                         # Convert TensorFlow model to ONNX
@@ -223,11 +235,18 @@ def save_model_with_tensor_fix(trainer, model_dir):
 
         # If all standard formats failed, try weights only
         logger.info("All standard formats failed, attempting to save weights only")
-        weights_path = os.path.join(model_dir, 'model_weights.h5')
+        if dataset_name:
+            weights_name = f"{dataset_name}_model_weights.h5"
+            architecture_name = f"{dataset_name}_model_architecture.json"
+        else:
+            weights_name = "model_weights.h5"
+            architecture_name = "model_architecture.json"
+
+        weights_path = os.path.join(model_dir, weights_name)
         trainer.model.save_weights(weights_path)
 
         # Save architecture separately
-        architecture_path = os.path.join(model_dir, 'model_architecture.json')
+        architecture_path = os.path.join(model_dir, architecture_name)
         try:
             model_json = trainer.model.to_json()
             with open(architecture_path, 'w') as f:
@@ -244,19 +263,28 @@ def save_model_with_tensor_fix(trainer, model_dir):
         raise
 
 
-def save_model(trainer, model_dir):
+def save_model(trainer, model_dir, dataset_name=None):
     """Main model saving function."""
-    save_model_with_tensor_fix(trainer, model_dir)
+    save_model_with_tensor_fix(trainer, model_dir, dataset_name)
 
 
 def setup_model_directory(args):
     """Setup and verify model directory from environment or args."""
-    model_dir = os.environ.get('SM_MODEL_DIR', args.model_dir)
-    logger.info(f"Model directory: {model_dir}")
-    logger.info(f"SM_MODEL_DIR env var: {os.environ.get('SM_MODEL_DIR', 'NOT SET')}")
-    
+    # Use session_id to create path: curate/models/{session_id}
+    if hasattr(args, 'session_id') and args.session_id:
+        # Create path relative to project root
+        project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))  # Go up to Curate/
+        model_dir = os.path.join(project_root, 'curate', 'models', args.session_id)
+        logger.info(f"Using session-based model directory: {model_dir}")
+        logger.info(f"Session ID: {args.session_id}")
+    else:
+        # Fallback to original logic for backward compatibility
+        model_dir = os.environ.get('SM_MODEL_DIR', args.model_dir)
+        logger.info(f"Model directory: {model_dir}")
+        logger.info(f"SM_MODEL_DIR env var: {os.environ.get('SM_MODEL_DIR', 'NOT SET')}")
+
     # Ensure model directory exists
     os.makedirs(model_dir, exist_ok=True)
     logger.info(f"Model directory created/verified: {model_dir}")
-    
+
     return model_dir
