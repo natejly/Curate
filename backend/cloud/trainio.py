@@ -152,7 +152,7 @@ def save_model_with_tensor_fix(trainer, model_dir):
             logger.info("Temporarily disabling eager execution for model saving")
 
         # Save in TensorFlow format first
-        keras_path = os.path.join(model_dir, 'model.keras')
+        keras_path = os.path.join(model_dir, 'model.h5')
         logger.info(f"Saving TensorFlow model to {keras_path}")
         tf.keras.backend.clear_session()
         trainer.model.save(keras_path)
