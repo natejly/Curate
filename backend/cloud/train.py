@@ -370,7 +370,34 @@ def main():
         # Then save the model
         save_model(trainer, model_dir)
         logger.info("Model saved")
-        
+
+        # Upload models to S3 for export functionality
+        logger.info("=== UPLOADING MODELS TO S3 ===")
+        try:
+            import subprocess
+            import sys
+            import os
+
+            # Get the path to s3_uploader.py
+            uploader_path = os.path.join(os.path.dirname(__file__), '..', 's3_uploader.py')
+
+            logger.info(f"Uploading models to S3 using: {uploader_path}")
+            result = subprocess.run([
+                sys.executable, uploader_path, args.session_id, "--models"
+            ], capture_output=True, text=True, timeout=300)  # 5 minute timeout
+
+            if result.returncode == 0:
+                logger.info("Models uploaded to S3 successfully")
+                logger.info(result.stdout)
+            else:
+                logger.warning(f"Failed to upload models to S3 (exit code: {result.returncode})")
+                logger.warning(f"STDOUT: {result.stdout}")
+                logger.warning(f"STDERR: {result.stderr}")
+                # Don't fail the training if upload fails
+        except Exception as upload_error:
+            logger.warning(f"Model upload to S3 failed: {str(upload_error)}")
+            # Don't fail the training if upload fails
+
         logger.info("=== TRAINING JOB COMPLETED SUCCESSFULLY ===")
         
     except Exception as e:

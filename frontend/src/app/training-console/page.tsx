@@ -15,6 +15,9 @@ function TrainingConsoleContent() {
   const consoleRef = useRef<HTMLDivElement>(null);
   const [isUserScrolling, setIsUserScrolling] = useState(false);
   const [showScrollButton, setShowScrollButton] = useState(false);
+  const [isTrainingComplete, setIsTrainingComplete] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const consoleLogsRef = useRef("");
 
 
   useEffect(() => {
@@ -30,7 +33,17 @@ function TrainingConsoleContent() {
 
         if (data.type === 'log') {
           // Handle log messages
-          setConsoleLogs((prev) => prev + data.message + "\n");
+          const newLogs = consoleLogsRef.current + data.message + "\n";
+          consoleLogsRef.current = newLogs;
+          setConsoleLogs(newLogs);
+
+          // Check for training completion
+          if (data.message.includes('TRAINING JOB COMPLETED') ||
+              data.message.includes('Training completed') ||
+              data.message.includes('Training completed for session')) {
+            setIsTrainingComplete(true);
+            setTrainStatus("Training completed successfully! 🎉");
+          }
         } else if (data.type === 'metrics') {
           // Handle metrics data
           setMetricsData(data.data);
@@ -39,14 +52,26 @@ function TrainingConsoleContent() {
       } catch {
         // Fallback for non-JSON data (backward compatibility)
         console.log("Received raw log:", e.data);
-        setConsoleLogs((prev) => prev + e.data + "\n");
+        const newLogs = consoleLogsRef.current + e.data + "\n";
+        consoleLogsRef.current = newLogs;
+        setConsoleLogs(newLogs);
       }
     };
 
     eventSource.onerror = (error) => {
       console.error("EventSource error:", error);
       eventSource.close();
-      setTrainStatus("Log streaming ended. Training may be finished or failed.");
+
+      // Check if training completed based on logs before connection closed
+      const hasCompletionMessage = consoleLogsRef.current.includes('TRAINING JOB COMPLETED') ||
+                                   consoleLogsRef.current.includes('Training completed');
+
+      if (hasCompletionMessage) {
+        setIsTrainingComplete(true);
+        setTrainStatus("Training completed successfully! 🎉");
+      } else {
+        setTrainStatus("Log streaming ended. Training may be finished or failed.");
+      }
     };
 
     eventSource.onopen = () => {
@@ -100,6 +125,44 @@ function TrainingConsoleContent() {
     }
   };
 
+  // Function to export model from S3
+  const exportModel = async (format: 'onnx' | 'tf') => {
+    if (!sessionId) return;
+
+    setIsExporting(true);
+    try {
+      const response = await fetch(
+        `${process.env.BACKEND_URL || 'http://localhost:8000'}/download-model/${sessionId}?format=${format}`
+      );
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      if (data.error) {
+        alert(`Export failed: ${data.error}`);
+        return;
+      }
+
+      // Trigger download using the presigned URL
+      const link = document.createElement('a');
+      link.href = data.download_url;
+      link.download = data.filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      console.log(`Model export initiated: ${data.filename}`);
+    } catch (error) {
+      console.error('Export error:', error);
+      alert('Failed to export model. Please check the console for details.');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   return (
     <div className="flex min-h-screen bg-black">
       {/* Main content area */}
@@ -150,6 +213,66 @@ function TrainingConsoleContent() {
               </div>
             )}
           </div>
+
+          {/* Model Export Section */}
+          {isTrainingComplete && sessionId && (
+            <div className="bg-black border border-white/20 rounded-lg p-6 mb-6">
+              <h3 className="text-lg font-semibold text-white mb-4">Export Trained Model</h3>
+              <div className="flex flex-col sm:flex-row gap-4">
+                <button
+                  onClick={() => exportModel('onnx')}
+                  disabled={isExporting}
+                  className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 disabled:cursor-not-allowed text-white px-6 py-3 rounded-lg font-medium transition-colors duration-200 flex items-center justify-center gap-2"
+                >
+                  {isExporting ? (
+                    <>
+                      <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Exporting...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                      Export ONNX Model
+                    </>
+                  )}
+                </button>
+
+                <button
+                  onClick={() => exportModel('tf')}
+                  disabled={isExporting}
+                  className="flex-1 bg-green-600 hover:bg-green-700 disabled:bg-green-400 disabled:cursor-not-allowed text-white px-6 py-3 rounded-lg font-medium transition-colors duration-200 flex items-center justify-center gap-2"
+                >
+                  {isExporting ? (
+                    <>
+                      <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Exporting...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                      Export TensorFlow Model
+                    </>
+                  )}
+                </button>
+              </div>
+
+              <div className="mt-4 p-3 rounded bg-black/30 border border-white/10">
+                <p className="text-sm text-gray-300">
+                  💡 <strong>Tip:</strong> Models are downloaded from cloud storage. The download link expires after 1 hour for security.
+                </p>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

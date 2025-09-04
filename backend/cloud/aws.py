@@ -120,3 +120,67 @@ class AWSHelper:
         # (Optional) clean up local zip
         os.remove(zip_path)
         print(f"Removed local zip: {zip_path}")
+
+    def upload_file(self, file_path, s3_key):
+        """
+        Upload a single file to S3.
+
+        :param file_path: Local file path
+        :param s3_key: S3 key (path in bucket)
+        """
+        file_size = os.path.getsize(file_path)
+        print(f"Uploading file {file_path} to s3://{self.bucket}/{s3_key} ({file_size/1e6:.2f} MB)...")
+
+        with tqdm(total=file_size, unit="B", unit_scale=True, desc="Uploading") as pbar:
+            self.s3_client.upload_file(
+                file_path,
+                self.bucket,
+                s3_key,
+                Config=self.config,
+                Callback=lambda bytes_transferred: pbar.update(bytes_transferred)
+            )
+
+        print(f"File upload complete: s3://{self.bucket}/{s3_key}")
+
+    def upload_directory(self, directory_path, s3_prefix):
+        """
+        Upload all files in a directory to S3, preserving the directory structure.
+
+        :param directory_path: Local directory path
+        :param s3_prefix: S3 prefix (folder path in bucket)
+        """
+        print(f"Uploading directory {directory_path} to s3://{self.bucket}/{s3_prefix}/")
+
+        total_files = 0
+        total_size = 0
+
+        # First pass: count files and total size
+        for root, dirs, files in os.walk(directory_path):
+            for file in files:
+                file_path = os.path.join(root, file)
+                total_size += os.path.getsize(file_path)
+                total_files += 1
+
+        print(f"Found {total_files} files ({total_size/1e6:.2f} MB total)")
+
+        uploaded_files = 0
+        with tqdm(total=total_size, unit="B", unit_scale=True, desc="Uploading") as pbar:
+            for root, dirs, files in os.walk(directory_path):
+                for file in files:
+                    local_path = os.path.join(root, file)
+                    # Create relative path from directory
+                    relative_path = os.path.relpath(local_path, directory_path)
+                    s3_key = os.path.join(s3_prefix, relative_path).replace("\\", "/")
+
+                    self.s3_client.upload_file(
+                        local_path,
+                        self.bucket,
+                        s3_key,
+                        Config=self.config
+                    )
+
+                    file_size = os.path.getsize(local_path)
+                    pbar.update(file_size)
+                    uploaded_files += 1
+
+        print(f"Directory upload complete: {uploaded_files} files uploaded to s3://{self.bucket}/{s3_prefix}/")

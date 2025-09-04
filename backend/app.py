@@ -62,6 +62,92 @@ async def available_datasets():
 
 
 
+@app.post("/upload-models/{session_id}")
+async def upload_models_endpoint(session_id: str):
+    """Manually upload models for a session to S3."""
+    import subprocess
+    import sys
+    import os
+
+    try:
+        # Get the path to s3_uploader.py
+        uploader_path = os.path.join(os.path.dirname(__file__), 's3_uploader.py')
+
+        if not os.path.exists(uploader_path):
+            return {"error": f"S3 uploader script not found at: {uploader_path}"}
+
+        print(f"Uploading models for session {session_id} to S3...")
+
+        # Run the upload script
+        result = subprocess.run([
+            sys.executable, uploader_path, session_id, "--models"
+        ], capture_output=True, text=True, timeout=300)  # 5 minute timeout
+
+        if result.returncode == 0:
+            return {
+                "success": True,
+                "message": f"Models for session {session_id} uploaded to S3 successfully",
+                "output": result.stdout.strip()
+            }
+        else:
+            return {
+                "success": False,
+                "error": f"Upload failed with exit code {result.returncode}",
+                "stdout": result.stdout.strip(),
+                "stderr": result.stderr.strip()
+            }
+
+    except subprocess.TimeoutExpired:
+        return {"error": "Upload timed out after 5 minutes"}
+    except Exception as e:
+        return {"error": f"Failed to upload models: {str(e)}"}
+
+@app.get("/download-model/{session_id}")
+async def download_model(session_id: str, format: str = "onnx"):
+    """Download trained model from S3."""
+    import boto3
+    from botocore.exceptions import ClientError
+
+    try:
+        # Initialize S3 client
+        s3_client = boto3.client('s3')
+        bucket_name = "curate-sagemaker-bucket-123456789012"
+
+        # Construct model path based on our new naming convention
+        if format == "onnx":
+            model_key = f"curate/models/{session_id}/model.onnx"
+            filename = f"{session_id}_model.onnx"
+        elif format == "tf":
+            model_key = f"curate/models/{session_id}/model/"
+            filename = f"{session_id}_model.zip"
+        else:
+            return {"error": f"Unsupported format: {format}. Use 'onnx' or 'tf'"}
+
+        # Check if the file exists in S3
+        try:
+            s3_client.head_object(Bucket=bucket_name, Key=model_key)
+        except ClientError as e:
+            if e.response['Error']['Code'] == '404':
+                return {"error": f"Model not found: {model_key}"}
+            else:
+                return {"error": f"S3 error: {str(e)}"}
+
+        # Generate presigned URL for download (expires in 1 hour)
+        presigned_url = s3_client.generate_presigned_url(
+            'get_object',
+            Params={
+                'Bucket': bucket_name,
+                'Key': model_key,
+                'ResponseContentDisposition': f'attachment; filename="{filename}"'
+            },
+            ExpiresIn=3600  # 1 hour
+        )
+
+        return {"download_url": presigned_url, "filename": filename}
+
+    except Exception as e:
+        return {"error": f"Failed to generate download URL: {str(e)}"}
+
 @app.get("/train-logs/{session_id}")
 async def train_logs(session_id: str):
     import asyncio
