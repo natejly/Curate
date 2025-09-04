@@ -107,11 +107,23 @@ async def train_logs(session_id: str):
     def parse_test_results(log_line: str):
         """Parse final test results from log lines."""
         try:
-            # Look for patterns like "Test results: {'loss': 0.1234, 'accuracy': 0.9876}"
-            test_result_pattern = r"Test results:\s*\{([^}]+)\}"
-            match = re.search(test_result_pattern, log_line)
-            if match:
-                results_str = match.group(1)
+            # Look for various test result patterns
+            patterns = [
+                r"Test results:\s*\{([^}]+)\}",  # Test results: {dict}
+                r"Test (\w+):\s*([0-9.]+)",       # Test loss: 0.1234
+                r"FINAL TEST RESULTS",            # Header line
+            ]
+
+            # Check for individual metric lines first
+            metric_match = re.search(r"Test (\w+):\s*([0-9.]+)", log_line)
+            if metric_match:
+                key, value = metric_match.groups()
+                return {key: float(value)}
+
+            # Check for full results dictionary
+            dict_match = re.search(r"Test results:\s*\{([^}]+)\}", log_line)
+            if dict_match:
+                results_str = dict_match.group(1)
                 # Parse the dictionary string
                 results_dict = {}
                 # Split by comma and parse key-value pairs
@@ -127,6 +139,11 @@ async def train_logs(session_id: str):
                         except ValueError:
                             results_dict[key] = value.strip("'\"")
                 return results_dict
+
+            # Check for header (we'll accumulate metrics after this)
+            if "FINAL TEST RESULTS" in log_line:
+                return {"test_header": True}
+
         except Exception as e:
             print(f"Error parsing test results: {e}")
         return None
@@ -268,6 +285,10 @@ async def train_logs(session_id: str):
 
                     decoded_line = line.decode('utf-8', errors='replace').rstrip()
                     if decoded_line.strip():  # Only send non-empty lines
+                        # Debug: Check for test-related lines
+                        if "Test" in decoded_line or "test" in decoded_line.lower():
+                            print(f"[DEBUG] Found test-related line: {decoded_line}")
+
                         # Parse and format the log line
                         formatted_line = format_log_line(decoded_line)
 
@@ -283,8 +304,20 @@ async def train_logs(session_id: str):
                             # Parse test results
                             test_results = parse_test_results(decoded_line)
                             if test_results:
-                                metrics_data["final_test_results"] = test_results
-                                print(f"[DEBUG] Parsed test results: {test_results}")
+                                if test_results.get("test_header"):
+                                    # Initialize test results collection
+                                    metrics_data["final_test_results"] = {}
+                                    print(f"[DEBUG] Started collecting test results")
+                                elif len(test_results) == 1 and not test_results.get("test_header"):
+                                    # Single metric - accumulate it
+                                    if not metrics_data.get("final_test_results"):
+                                        metrics_data["final_test_results"] = {}
+                                    metrics_data["final_test_results"].update(test_results)
+                                    print(f"[DEBUG] Added test metric: {test_results}")
+                                else:
+                                    # Full results dictionary
+                                    metrics_data["final_test_results"] = test_results
+                                    print(f"[DEBUG] Parsed full test results: {test_results}")
 
                             # Parse stage information
                             stage_data = parse_stage_info(decoded_line)

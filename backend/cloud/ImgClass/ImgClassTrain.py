@@ -317,6 +317,13 @@ class ImgClassTrainer:
         metrics = dict(zip(self.model.metrics_names, [float(r) for r in results]))
         print(f"Test results: {metrics}")
         self.metrics = metrics
+
+        # Also log to ensure it's captured
+        import logging
+        logger = logging.getLogger()
+        logger.info(f"=== FINAL TEST RESULTS ===")
+        for key, value in metrics.items():
+            logger.info(f"Test {key}: {value}")
     def getHistory1(self):
         return self.history_stage1
     
