@@ -57,7 +57,11 @@ class TrainingLog:
             if hasattr(obj, 'item'):  # numpy types
                 return obj.item()
             elif hasattr(obj, 'numpy'):  # tensorflow types
-                return obj.numpy().item()
+                tensor_data = obj.numpy()
+                if tensor_data.shape == ():  # scalar tensor
+                    return tensor_data.item()
+                else:  # multi-dimensional tensor
+                    return tensor_data.tolist()
             elif isinstance(obj, dict):
                 return {k: convert_value(v) for k, v in obj.items()}
             elif isinstance(obj, (list, tuple)):
