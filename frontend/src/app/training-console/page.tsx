@@ -1,12 +1,12 @@
 "use client";
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import LiveMetrics from "./LiveMetrics";
 
 export const dynamic = "force-dynamic";
 
-export default function TrainingConsole() {
-  const router = useRouter();
+function TrainingConsoleContent() {
+  const router = useRouter(); // eslint-disable-line @typescript-eslint/no-unused-vars
   const searchParams = useSearchParams();
   const sessionId = searchParams.get("sessionId");
   const [consoleLogs, setConsoleLogs] = useState("");
@@ -17,7 +17,7 @@ export default function TrainingConsole() {
   const [showScrollButton, setShowScrollButton] = useState(false);
 
 
-    useEffect(() => {
+  useEffect(() => {
     if (!sessionId) return;
 
     console.log("Starting integrated log and metrics stream for session:", sessionId);
@@ -36,7 +36,7 @@ export default function TrainingConsole() {
           setMetricsData(data.data);
           console.log("Received metrics:", data.data);
         }
-      } catch (parseError) {
+      } catch {
         // Fallback for non-JSON data (backward compatibility)
         console.log("Received raw log:", e.data);
         setConsoleLogs((prev) => prev + e.data + "\n");
@@ -76,7 +76,7 @@ export default function TrainingConsole() {
         setShowScrollButton(false);
       }
     }
-  }, [consoleLogs]);
+  }, [consoleLogs, isUserScrolling]);
 
   // Handle scroll events to detect manual scrolling
   const handleScroll = () => {
@@ -153,5 +153,22 @@ export default function TrainingConsole() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function TrainingConsole() {
+  return (
+    <Suspense fallback={
+      <div className="flex min-h-screen bg-black">
+        <div className="flex-1 flex flex-col items-center justify-center">
+          <div className="text-white text-center">
+            <div className="text-xl mb-4">Loading Training Console...</div>
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto"></div>
+          </div>
+        </div>
+      </div>
+    }>
+      <TrainingConsoleContent />
+    </Suspense>
   );
 }

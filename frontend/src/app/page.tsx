@@ -3,22 +3,37 @@ import React, { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AvailableDatasetsSection } from "./AvailableDatasetsSection";
 
+interface DatasetInfo {
+  session_id: string;
+  train_dir: string;
+  val_dir: string;
+  test_dir: string;
+  classes: string[];
+  total_images: number;
+  train_images: number;
+  val_images: number;
+  test_images: number;
+  train_images_per_class: Record<string, number>;
+  val_images_per_class: Record<string, number>;
+  test_images_per_class: Record<string, number>;
+  task: string;
+}
+
 // Accepts only folder uploads
 export default function Home() {
   const router = useRouter();
   const [consoleLogs, setConsoleLogs] = useState<string>("");
   const [showConsole, setShowConsole] = useState(false);
-  const [testResults, setTestResults] = useState<any | null>(null);
+  const [testResults, setTestResults] = useState<Record<string, unknown> | null>(null);
   const [trainStatus, setTrainStatus] = useState<string>("");
   // Remove chatInput state
   // Removed LLM chat state
-  const [lastSessionId, setLastSessionId] = useState<string | null>(null);
   const [selectedZip, setSelectedZip] = useState<File | null>(null);
   const [dragActive, setDragActive] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploadProgress, setUploadProgress] = useState<number>(0);
   const [uploadComplete, setUploadComplete] = useState(false);
-  const [datasetInfo, setDatasetInfo] = useState<any | null>(null);
+  const [datasetInfo, setDatasetInfo] = useState<DatasetInfo | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const handleDrag = (e: React.DragEvent<HTMLDivElement>) => {
@@ -78,7 +93,6 @@ export default function Home() {
         try {
           const res = JSON.parse(xhr.responseText);
           sessionId = res.session_id;
-          setLastSessionId(sessionId);
         } catch {}
         if (sessionId) {
           // Fetch dataset info

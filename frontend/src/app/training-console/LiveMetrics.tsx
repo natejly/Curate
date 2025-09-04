@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useRef } from 'react';
+import React from 'react';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -48,15 +48,15 @@ interface MetricsData {
     type: string;
     message: string;
   };
-  final_test_results?: Record<string, any> | null;
+  final_test_results?: Record<string, unknown> | null;
 }
 
 interface LiveMetricsProps {
-  sessionId: string;
+  sessionId?: string;
   metricsData?: MetricsData | null;
 }
 
-export default function LiveMetrics({ sessionId, metricsData }: LiveMetricsProps) {
+export default function LiveMetrics({ metricsData }: LiveMetricsProps) {
   // Determine connection status based on metrics data
   const getConnectionStatus = () => {
     if (!metricsData) return 'connecting';
@@ -70,12 +70,12 @@ export default function LiveMetrics({ sessionId, metricsData }: LiveMetricsProps
   // Use metricsData directly instead of component state
   const currentMetricsData = metricsData;
 
-  const createChartData = (metrics: any[], label: string, color: string, valueKey: string) => {
+  const createChartData = (metrics: Array<{ epoch: number; loss: number; accuracy: number; val_loss: number; val_accuracy: number; timestamp: string }>, label: string, color: string, valueKey: keyof typeof metrics[0]) => {
     return {
       labels: metrics.map(m => `Epoch ${m.epoch}`),
       datasets: [{
         label,
-        data: metrics.map(m => m[valueKey]),
+        data: metrics.map(m => m[valueKey] as number),
         borderColor: color,
         backgroundColor: color + '20',
         tension: 0.1,
@@ -313,9 +313,9 @@ export default function LiveMetrics({ sessionId, metricsData }: LiveMetricsProps
               </div>
             ))}
           </div>
-          <div className="mt-3 text-xs text-green-500">
-            These results show the model's performance on the held-out test dataset
-          </div>
+                      <div className="mt-3 text-xs text-green-500">
+              These results show the model&apos;s performance on the held-out test dataset
+            </div>
         </div>
       )}
     </div>

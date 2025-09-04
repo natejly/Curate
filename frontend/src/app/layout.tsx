@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import Link from "next/link";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -22,18 +23,18 @@ function AppSidebar() {
     <div className="w-64 bg-black text-white flex flex-col p-6 border-r border-gray-800 min-h-screen">
       <div className="text-4xl font-extrabold mb-10 tracking-tight">Curate.</div>
       <nav className="flex flex-col gap-4">
-        <a
+        <Link
           href="/"
           className="text-left px-2 py-2 rounded hover:bg-gray-800"
         >
           Datasets
-        </a>
-        <a
+        </Link>
+        <Link
           href="/training-console"
           className="text-left px-2 py-2 rounded hover:bg-gray-800"
         >
           Training
-        </a>
+        </Link>
       </nav>
     </div>
   );
