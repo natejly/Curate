@@ -42,15 +42,12 @@ print(f"Using GPU:{gpus}" if gpus else "No GPU found, using CPU")
 from ImgClass.ImgClassData import ImgClassData
 from ImgClass.ImgClassTrain import ImgClassTrainer
 from trainio import (
-    download_and_unzip,
-    print_dir_structure,
+    download_and_unzip, 
+    print_dir_structure, 
     parse_s3_path,
-    save_and_upload_models,
+    save_model,
     save_training_log,
-    setup_model_directory,
-    fetch_model_from_s3,
-    fetch_session_model,
-    list_session_models
+    setup_model_directory
 )
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 # Use the root logger so all messages (including from other modules) can propagate
@@ -365,43 +362,15 @@ def main():
         logger.info("=== SAVING MODEL AND LOGS ===")
         model_dir = setup_model_directory(args)
         logger.info(f"Model directory: {model_dir}")
-
+        
         # Save training log first (independent of model saving)
         save_training_log(trainer, model_dir)
         logger.info("Training log saved")
-
-        # Save models in multiple formats and upload to S3
-        logger.info("=== SAVING MODELS TO S3 ===")
-        saved_files, uploaded_locations = save_and_upload_models(trainer, model_dir, session_id=args.session_id)
-
-        # Log what was saved
-        for format_name, local_path in saved_files.items():
-            logger.info(f"{format_name.upper()} model saved locally: {local_path}")
-
-        # Log what was uploaded
-        for format_name, s3_location in uploaded_locations.items():
-            logger.info(f"{format_name.upper()} model uploaded to S3: {s3_location}")
-
-        # Store S3 locations for potential later retrieval
-        model_s3_locations = uploaded_locations
-
-        # Log model locations for easy retrieval later
-        logger.info("=== MODEL STORAGE LOCATIONS ===")
-        if args.session_id:
-            logger.info(f"Session ID: {args.session_id}")
-            logger.info("Models are stored in S3 organized by session:")
-            for format_name, s3_location in uploaded_locations.items():
-                logger.info(f"  {format_name.upper()}: {s3_location}")
-            logger.info("")
-            logger.info("To retrieve models later, use:")
-            logger.info(f"  fetch_session_model('{args.session_id}', 'keras')  # for TensorFlow format")
-            logger.info(f"  fetch_session_model('{args.session_id}', 'onnx')   # for ONNX format")
-        else:
-            logger.info("Models are stored in S3:")
-            for format_name, s3_location in uploaded_locations.items():
-                logger.info(f"  {format_name.upper()}: {s3_location}")
-            logger.info("Use fetch_model_from_s3() function to download models when needed.")
-
+        
+        # Then save the model
+        save_model(trainer, model_dir)
+        logger.info("Model saved")
+        
         logger.info("=== TRAINING JOB COMPLETED SUCCESSFULLY ===")
         
     except Exception as e:
