@@ -3,7 +3,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 
 export function AvailableDatasetsSection() {
-  const fetcher = (url: string) => fetch(url).then(res => res.json());
+  const fetcher = (url: string) => fetch(url).then((res: Response) => res.json());
   const { data, error, isLoading } = useSWR("http://localhost:8000/available-datasets", fetcher);
   const [selected, setSelected] = useState<string | null>(null);
   const [trainStatus, setTrainStatus] = useState<string>("");

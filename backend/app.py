@@ -62,80 +62,113 @@ async def available_datasets():
 
 
 
-@app.get("/debug-training-log/{session_id}")
-async def debug_training_log(session_id: str):
-    """Debug endpoint to view raw training log content."""
-    import boto3
-    from botocore.exceptions import ClientError
-
+@app.get("/test-s3")
+async def test_s3():
+    """Test S3 connectivity."""
     try:
-        # Initialize S3 client
+        import boto3
+        from botocore.exceptions import ClientError
+
         s3_client = boto3.client('s3')
         bucket_name = "curate-sagemaker-bucket-123456789012"
 
-        # Try to get the training log from S3
-        training_log_key = f"curate/logs/{session_id}/training_log.json"
+        # Try to list objects
+        response = s3_client.list_objects_v2(Bucket=bucket_name, MaxKeys=5)
 
-        try:
+        if 'Contents' in response:
+            objects = [obj['Key'] for obj in response['Contents']]
+            return {"s3_status": "connected", "bucket": bucket_name, "sample_objects": objects[:3]}
+        else:
+            return {"s3_status": "connected", "bucket": bucket_name, "message": "Bucket exists but no objects found"}
+
+    except ClientError as e:
+        return {"s3_status": "error", "error": str(e), "error_code": e.response['Error']['Code']}
+    except Exception as e:
+        return {"s3_status": "error", "error": str(e)}
+
+@app.get("/debug-training-log/{session_id}")
+async def debug_training_log(session_id: str):
+    """Debug endpoint to view raw training log content from local files or S3."""
+    import os
+    from pathlib import Path
+    import boto3
+    from botocore.exceptions import ClientError
+    try:
+            print("looking")
+            # Initialize S3 client
+            s3_client = boto3.client('s3')
+            bucket_name = "curate-sagemaker-bucket-123456789012"
+
+            # Try to get the training log from S3
+            training_log_key = f"curate/models/{session_id}/training_log.json"
+
             response = s3_client.get_object(Bucket=bucket_name, Key=training_log_key)
             log_content = response['Body'].read().decode('utf-8')
+            print(f"[DEBUG] Found training log in S3 for session {session_id}")
+            return {"log_content": log_content}
 
-            # Try to parse as JSON to see structure
-            try:
-                log_data = json.loads(log_content)
-                return {
-                    "session_id": session_id,
-                    "log_found": True,
-                    "log_size": len(log_content),
-                    "parsed_successfully": True,
-                    "structure": str(type(log_data)),
-                    "keys": list(log_data.keys()) if isinstance(log_data, dict) else "Not a dict",
-                    "sample_content": str(log_data)[:500] + "..." if len(str(log_data)) > 500 else str(log_data)
-                }
-            except json.JSONDecodeError as e:
-                return {
-                    "session_id": session_id,
-                    "log_found": True,
-                    "log_size": len(log_content),
-                    "parsed_successfully": False,
-                    "json_error": str(e),
-                    "raw_content": log_content[:500] + "..." if len(log_content) > 500 else log_content
-                }
-
-        except ClientError as e:
-            if e.response['Error']['Code'] == 'NoSuchKey':
-                return {"error": f"Training log not found for session {session_id}"}
-            else:
-                return {"error": f"S3 error: {e.response['Error']['Message']}"}
 
     except Exception as e:
         return {"error": f"Failed to debug training log: {str(e)}"}
 
 @app.get("/model-stats/{session_id}")
 async def get_model_stats(session_id: str):
-    """Get training statistics for a specific model."""
+    """Get training statistics for a specific model from local training log or S3."""
+    import os
+    from pathlib import Path
     import boto3
     from botocore.exceptions import ClientError
 
     try:
-        # Initialize S3 client
-        s3_client = boto3.client('s3')
-        bucket_name = "curate-sagemaker-bucket-123456789012"
+        # Get the local training log path
+        backend_dir = Path(__file__).parent
+        curate_dir = backend_dir.parent / "curate"
 
-        # Try to get the training log from S3
-        training_log_key = f"curate/logs/{session_id}/training_log.json"
+        # Try multiple possible locations for the training log
+        possible_paths = [
+            curate_dir / "logs" / session_id / "training_log.json",
+            curate_dir / "models" / session_id / "training_log.json"
+        ]
 
-        try:
-            response = s3_client.get_object(Bucket=bucket_name, Key=training_log_key)
-            log_content = response['Body'].read().decode('utf-8')
-            log_data = json.loads(log_content)
-        except ClientError as e:
-            if e.response['Error']['Code'] == 'NoSuchKey':
-                return {"error": f"Training log not found for session {session_id}"}
-            else:
-                return {"error": f"S3 error: {e.response['Error']['Message']}"}
-        except json.JSONDecodeError:
-            return {"error": "Invalid training log format"}
+        training_log_path = None
+        for path in possible_paths:
+            if path.exists():
+                training_log_path = path
+                break
+
+        # If not found locally, try S3
+        if not training_log_path:
+            try:
+                # Initialize S3 client
+                s3_client = boto3.client('s3')
+                bucket_name = "curate-sagemaker-bucket-123456789012"
+
+                # Try to get the training log from S3
+                training_log_key = f"curate/models/{session_id}/training_log.json"
+
+                response = s3_client.get_object(Bucket=bucket_name, Key=training_log_key)
+                log_content = response['Body'].read().decode('utf-8')
+                log_data = json.loads(log_content)
+                print(f"[DEBUG] Found training log in S3 for session {session_id}")
+
+            except ClientError as e:
+                if e.response['Error']['Code'] == 'NoSuchKey':
+                    return {"error": f"Training log not found for session {session_id}. Searched local: {[str(p) for p in possible_paths]}, S3 key: {training_log_key}"}
+                else:
+                    return {"error": f"S3 error: {e.response['Error']['Message']}"}
+            except json.JSONDecodeError:
+                return {"error": "Invalid training log format from S3"}
+        else:
+            # Read and parse the local training log
+            try:
+                with open(training_log_path, 'r', encoding='utf-8') as f:
+                    log_content = f.read()
+                    log_data = json.loads(log_content)
+                print(f"[DEBUG] Found training log locally for session {session_id}: {training_log_path}")
+            except json.JSONDecodeError as e:
+                return {"error": f"Invalid training log format: {e}"}
+            except Exception as e:
+                return {"error": f"Failed to read training log: {e}"}
 
         # Parse the training log to extract final stats
         stats = parse_training_stats(log_data)
