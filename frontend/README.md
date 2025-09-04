@@ -1,29 +1,36 @@
-
 # Curate Frontend
 
-This project is a Next.js app scaffolded with React and Tailwind CSS.
+A Next.js application for dataset management and ML training visualization.
 
-## Getting Started
+## Deployment
 
-- Install dependencies: `npm install`
-- Build the app: `npm run build`
-- Launch the development server: `npm run dev`
+This app is configured for deployment on Vercel with Next.js 13+ App Router.
 
+### Build Configuration
+- **Framework**: Next.js
+- **Build Command**: `npm run build`
+- **Output Directory**: `.next` (automatic)
+- **Node Version**: 18.x or later
 
-The app will be available at <http://localhost:3000>
+### Environment Variables
+Set the following environment variables in Vercel:
+- `BACKEND_URL`: Your backend API URL (e.g., `https://your-backend.vercel.app`)
 
+### Routes
+- `/` - Main dashboard with dataset upload
+- `/training-console` - Live training console with metrics
+- `/api/upload` - File upload endpoint
 
-## Project Structure
+## Development
 
-- Uses App Router (`src/app`)
-- Tailwind CSS for styling
-- ESLint for linting
+```bash
+npm install
+npm run dev
+```
 
+## Build
 
-## Customization
-
-You can now customize your app by editing files in the `src` directory.
-
----
-
-For more details, see the `.github/copilot-instructions.md` file.
+```bash
+npm run build
+npm start
+```

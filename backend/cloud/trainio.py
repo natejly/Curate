@@ -144,74 +144,39 @@ def save_training_log(trainer, model_dir):
 
 
 def save_model_with_tensor_fix(trainer, model_dir):
-    """Save model with TensorFlow compatibility fixes for SageMaker."""
+    """Save model in both TensorFlow (.keras) and ONNX formats."""
     try:
         os.makedirs(model_dir, exist_ok=True)
         was_eager = tf.executing_eagerly()
         if was_eager:
             logger.info("Temporarily disabling eager execution for model saving")
-            
-        # Use SageMaker-compatible numeric directory name for serving
-        save_attempts = [('00000001', 'tf'), ('model.h5', 'h5'), ('model.keras', None)]
-        
-        for filename, save_format in save_attempts:
-            model_path = os.path.join(model_dir, filename)
-            try:
-                logger.info(f"Attempting to save model to {model_path} (format: {save_format or 'keras'})")
-                tf.keras.backend.clear_session()
-                
-                if save_format == 'tf':
-                    tf.saved_model.save(trainer.model, model_path)
-                elif save_format:
-                    trainer.model.save(model_path, save_format=save_format)
-                else:
-                    trainer.model.save(model_path)
-                    
-                logger.info("Model saved successfully")
-                
-                # Log file/directory size
-                if os.path.isfile(model_path):
-                    file_size = os.path.getsize(model_path) / (1024 * 1024)
-                    logger.info(f"Model file size: {file_size:.2f} MB")
-                elif os.path.isdir(model_path):
-                    total_size = sum(os.path.getsize(os.path.join(dirpath, filename)) 
-                                   for dirpath, dirnames, filenames in os.walk(model_path) 
-                                   for filename in filenames)
-                    dir_size = total_size / (1024 * 1024)
-                    logger.info(f"Model directory size: {dir_size:.2f} MB")
-                    
-                return
-                
-            except Exception as format_error:
-                logger.warning(f"Failed to save in {save_format or 'keras'} format: {str(format_error)}")
-                if os.path.exists(model_path):
-                    if os.path.isfile(model_path):
-                        os.remove(model_path)
-                    elif os.path.isdir(model_path):
-                        shutil.rmtree(model_path)
-                continue
-                
-        # If all standard formats failed, try weights only
-        logger.info("All standard formats failed, attempting to save weights only")
-        weights_path = os.path.join(model_dir, 'model_weights.h5')
-        trainer.model.save_weights(weights_path)
-        
-        # Save architecture separately
-        architecture_path = os.path.join(model_dir, 'model_architecture.json')
+
+        # Save in TensorFlow format first
+        keras_path = os.path.join(model_dir, 'model.keras')
+        logger.info(f"Saving TensorFlow model to {keras_path}")
+        tf.keras.backend.clear_session()
+        trainer.model.save(keras_path)
+
+        # Log TensorFlow model size
+        keras_size = os.path.getsize(keras_path) / (1024 * 1024)
+        logger.info(f"TensorFlow model saved: {keras_size:.2f} MB")
+
+        # Attempt ONNX export
         try:
-            model_json = trainer.model.to_json()
-            with open(architecture_path, 'w') as f:
-                f.write(model_json)
-        except Exception as json_error:
-            logger.warning(f"Could not save model architecture as JSON: {str(json_error)}")
-            
-        logger.info("Model weights and architecture saved successfully")
-        weights_size = os.path.getsize(weights_path) / (1024 * 1024)
-        logger.info(f"Model weights size: {weights_size:.2f} MB")
-        
+            export_model_to_onnx(trainer.model, model_dir)
+            onnx_path = os.path.join(model_dir, 'model.onnx')
+            if os.path.exists(onnx_path):
+                onnx_size = os.path.getsize(onnx_path) / (1024 * 1024)
+                logger.info(f"ONNX model exported: {onnx_size:.2f} MB")
+        except Exception as onnx_error:
+            logger.warning(f"ONNX export failed (TensorFlow model still available): {str(onnx_error)}")
+
+        logger.info("Model saving completed - both formats attempted")
+        return
+
     except Exception as e:
-        logger.error(f"Failed to save model in any format: {str(e)}")
-        raise
+        logger.error(f"Model saving failed: {str(e)}")
+        raise e
 
 
 def save_model(trainer, model_dir):
@@ -230,3 +195,50 @@ def setup_model_directory(args):
     logger.info(f"Model directory created/verified: {model_dir}")
     
     return model_dir
+
+
+def export_model_to_onnx(model, model_dir):
+    """Export TensorFlow/Keras model to ONNX format."""
+    try:
+        # Try to import tf2onnx
+        import tf2onnx
+
+        onnx_path = os.path.join(model_dir, 'model.onnx')
+        logger.info("Attempting ONNX export...")
+
+        # Convert model to ONNX
+        # Note: This requires input signature specification
+        # For simplicity, we'll use a basic conversion approach
+
+        # Create a representative input shape based on model input
+        input_signature = None
+        if hasattr(model, 'input_shape') and model.input_shape:
+            # Remove batch dimension for ONNX
+            input_shape = [dim if dim is not None else 1 for dim in model.input_shape[1:]]
+            input_signature = [tf.TensorSpec([None] + input_shape, tf.float32, name='input')]
+
+        if input_signature:
+            # Convert to ONNX
+            model_proto, _ = tf2onnx.convert.from_keras(
+                model,
+                input_signature=input_signature,
+                opset=13  # ONNX opset version
+            )
+
+            # Save ONNX model
+            with open(onnx_path, 'wb') as f:
+                f.write(model_proto.SerializeToString())
+
+            # Log file size
+            file_size = os.path.getsize(onnx_path) / (1024 * 1024)
+            logger.info(f"ONNX model exported successfully: {file_size:.2f} MB")
+        else:
+            logger.warning("Could not determine input signature for ONNX conversion")
+            raise ValueError("Unable to create input signature for ONNX export")
+
+    except ImportError:
+        logger.info("tf2onnx not installed - skipping ONNX export. Install with: pip install tf2onnx")
+        raise ImportError("tf2onnx not available")
+    except Exception as e:
+        logger.warning(f"ONNX export failed: {str(e)}")
+        raise e

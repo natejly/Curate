@@ -1,4 +1,4 @@
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, FileResponse
 import subprocess
 import sys
 
@@ -437,103 +437,77 @@ async def root():
 
 @app.post("/upload/zip")
 async def upload_zip(file: UploadFile = File(...)):
-    """Accept a single zip file and save it in temp_uploads."""
+    """Accept a single zip file and save it in temp_uploads. Processing happens asynchronously."""
     if not file.filename.lower().endswith('.zip'):
         raise HTTPException(status_code=400, detail="Only .zip files are accepted.")
     try:
         session_id = str(uuid.uuid4())
         session_dir = TEMP_DIR / session_id
         session_dir.mkdir(exist_ok=True)
+
+        # Save the uploaded zip file
         zip_path = session_dir / file.filename
         with open(zip_path, "wb") as buffer:
             content = await file.read()
             buffer.write(content)
-        # Unzip the file
-        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-            zip_ref.extractall(session_dir)
-        # Remove __MACOSX folder if present
-        macosx_dir = session_dir / "__MACOSX"
-        if macosx_dir.exists() and macosx_dir.is_dir():
-            import shutil
-            shutil.rmtree(macosx_dir)
-        # Find the first folder (assume dataset root), ignore __MACOSX
-        items = [item for item in session_dir.iterdir() if item.is_dir() and item.name != "__MACOSX"]
-        if not items:
-            raise HTTPException(status_code=400, detail="No dataset folder found after unzip")
-        dataset_root = str(items[0])
-        # Run ImgClassData and LLM task inference, save results
+
+        # Create initial upload status
+        initial_upload_status = {
+            "session_id": session_id,
+            "upload_status": "received",
+            "message": "File uploaded successfully. Starting processing..."
+        }
+        upload_status_path = session_dir / "upload_status.json"
+        with open(upload_status_path, "w") as f:
+            json.dump(initial_upload_status, f)
+
+        # Create initial dataset_info.json with processing status
+        initial_info = {
+            "session_id": session_id,
+            "processing_status": "waiting",
+            "message": "Waiting for upload processing to complete..."
+        }
+        info_path = session_dir / "dataset_info.json"
+        with open(info_path, "w") as f:
+            json.dump(initial_info, f)
+
+        # Start upload handler subprocess
         try:
-            img_data = ImgClassData(dataset_root)
-            def count_images_in_folders(folders):
-                total = 0
-                per_class = {}
-                for folder in folders:
-                    if os.path.isdir(folder):
-                        count = len([f for f in os.listdir(folder) if os.path.isfile(os.path.join(folder, f))])
-                        per_class[os.path.basename(folder)] = count
-                        total += count
-                return total, per_class
+            import subprocess
+            handler_script = Path(__file__).parent / "upload_handler.py"
 
-            train_total, train_per_class = count_images_in_folders(img_data.train_folders)
-            val_total, val_per_class = count_images_in_folders(img_data.val_folders)
-            test_total, test_per_class = count_images_in_folders(img_data.test_folders)
-            total_images = train_total + val_total + test_total
+            # Create log file for subprocess output
+            log_dir = Path(__file__).parent / "logs"
+            log_dir.mkdir(exist_ok=True)
+            log_file = log_dir / f"upload_handler_{session_id}.log"
 
-            # Get LLM-inferred task
-            file_tree = img_data.json_tree
-            full_prompt = f"""
-            You are a data science assistant. Here is the file tree of a dataset:
-            {file_tree}
+            with open(log_file, 'w') as logfile:
+                subprocess.Popen([
+                    sys.executable,
+                    str(handler_script),
+                    session_id,
+                    str(zip_path)
+                ], stdout=logfile, stderr=logfile, text=True)
 
-            Based only on the file tree, extract the most likely ML task. 
-            If the task is Image Classification return \"Image Classification\"
-            If the task is Image Segmentation return \"Image Segmentation\"
-            If the task is Object Detection return \"Object Detection\"
-            If the task is Text Classification return \"Text Classification\"
-            If the task is not any of the above return \"NONE\"
-            Only return one of these exact strings. Be strict.
-            """
-            llm_task = "NONE"
-            try:
-                openai.api_key = OPENAI_API_KEY
-                response = openai.chat.completions.create(
-                    model="gpt-4o-mini",
-                    messages=[{"role": "user", "content": full_prompt}],
-                    temperature=0.1
-                )
-                llm_task = response.choices[0].message.content.strip()
-            except Exception as e:
-                print(f"LLM error: {e}")
-                llm_task = "ERROR"
+            print(f"Started upload handler subprocess for session {session_id} (logs: {log_file})")
+        except Exception as subprocess_error:
+            print(f"Warning: Failed to start upload handler subprocess: {subprocess_error}")
+            # Update status and continue anyway
+            initial_upload_status["upload_status"] = "failed"
+            initial_upload_status["message"] = f"Failed to start processing: {str(subprocess_error)}"
+            with open(upload_status_path, "w") as f:
+                json.dump(initial_upload_status, f)
 
-            result = {
-                "session_id": session_id,
-                "train_dir": img_data.train_dir,
-                "val_dir": img_data.val_dir,
-                "test_dir": img_data.test_dir,
-                "classes": img_data.classes,
-                "total_images": total_images,
-                "train_images": train_total,
-                "val_images": val_total,
-                "test_images": test_total,
-                "train_images_per_class": train_per_class,
-                "val_images_per_class": val_per_class,
-                "test_images_per_class": test_per_class,
-                "task": llm_task
-            }
-            import json
-            with open(session_dir / "dataset_info.json", "w") as f:
-                json.dump(result, f)
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Failed to process dataset: {str(e)}")
         return JSONResponse(
             status_code=200,
             content={
-                "message": f"Successfully uploaded zip file {file.filename}",
+                "message": f"Successfully uploaded zip file {file.filename}. Processing in background.",
                 "session_id": session_id,
                 "file": file.filename,
                 "size": len(content),
-                "upload_directory": str(session_dir)
+                "upload_directory": str(session_dir),
+                "upload_status": "received",
+                "processing_status": "waiting"
             }
         )
     except Exception as e:
@@ -550,6 +524,301 @@ async def dataset_info(session_id: str):
     with open(info_path, "r") as f:
         result = json.load(f)
     return result
+
+# Endpoint to check upload and processing status
+@app.get("/upload-status/{session_id}")
+async def upload_status(session_id: str):
+    """Check the upload and processing status of a session."""
+    session_dir = TEMP_DIR / session_id
+    if not session_dir.exists():
+        raise HTTPException(status_code=404, detail="Session not found.")
+
+    # Get upload status
+    upload_status_path = session_dir / "upload_status.json"
+    upload_info = {
+        "session_id": session_id,
+        "upload_status": "unknown",
+        "message": "Upload status unknown"
+    }
+
+    if upload_status_path.exists():
+        try:
+            with open(upload_status_path, "r") as f:
+                upload_info = json.load(f)
+        except Exception as e:
+            upload_info = {
+                "session_id": session_id,
+                "upload_status": "error",
+                "message": f"Failed to read upload status: {str(e)}"
+            }
+
+    # Get dataset processing status
+    info_path = session_dir / "dataset_info.json"
+    dataset_info = {
+        "processing_status": "not_started",
+        "message": "Dataset processing has not been initiated."
+    }
+
+    if info_path.exists():
+        try:
+            with open(info_path, "r") as f:
+                dataset_info = json.load(f)
+        except Exception as e:
+            dataset_info = {
+                "processing_status": "error",
+                "error": f"Failed to read processing status: {str(e)}"
+            }
+
+    # Combine both statuses
+    combined_status = {
+        **upload_info,
+        **dataset_info,
+        "session_id": session_id
+    }
+
+    return combined_status
+
+# Endpoint to check dataset processing status (legacy endpoint for backward compatibility)
+@app.get("/dataset-status/{session_id}")
+async def dataset_status(session_id: str):
+    """Check the processing status of a dataset."""
+    session_dir = TEMP_DIR / session_id
+    if not session_dir.exists():
+        raise HTTPException(status_code=404, detail="Session not found.")
+
+    info_path = session_dir / "dataset_info.json"
+    if not info_path.exists():
+        return {
+            "session_id": session_id,
+            "processing_status": "not_started",
+            "message": "Dataset processing has not been initiated."
+        }
+
+    try:
+        with open(info_path, "r") as f:
+            result = json.load(f)
+
+        # Ensure processing_status is included
+        if "processing_status" not in result:
+            result["processing_status"] = "unknown"
+
+        return result
+    except Exception as e:
+        return {
+            "session_id": session_id,
+            "processing_status": "error",
+            "error": f"Failed to read status: {str(e)}"
+        }
+
+# Endpoint to upload processed dataset to S3 (without starting training)
+@app.post("/upload-to-s3/{session_id}")
+async def upload_to_s3(session_id: str):
+    """Upload the processed dataset to S3 bucket using subprocess."""
+    session_dir = TEMP_DIR / session_id
+    
+    if not session_dir.exists():
+        raise HTTPException(status_code=404, detail=f"Session not found: {session_id}")
+
+    # Check if dataset is processed
+    info_path = session_dir / "dataset_info.json"
+    if not info_path.exists():
+        raise HTTPException(status_code=400, detail="Dataset not processed yet. Please wait for processing to complete.")
+
+    # Check if already uploaded
+    s3_status_path = session_dir / "s3_upload_status.json"
+    if s3_status_path.exists():
+        try:
+            with open(s3_status_path, 'r') as f:
+                s3_status = json.load(f)
+            if s3_status.get("s3_upload_status") == "completed":
+                return {
+                    "message": "Dataset already uploaded to cloud storage",
+                    "session_id": session_id,
+                    "s3_location": s3_status.get("s3_location", ""),
+                    "dataset_name": s3_status.get("dataset_name", "")
+                }
+        except Exception:
+            pass
+
+    try:
+        with open(info_path, 'r') as f:
+            dataset_info = json.load(f)
+
+        if dataset_info.get("processing_status") != "completed":
+            raise HTTPException(status_code=400, detail="Dataset processing not completed yet.")
+
+        # Create initial S3 upload status
+        initial_s3_status = {
+            "session_id": session_id,
+            "s3_upload_status": "starting",
+            "message": "Starting S3 upload process..."
+        }
+        with open(s3_status_path, "w") as f:
+            json.dump(initial_s3_status, f)
+
+        # Start S3 upload subprocess
+        try:
+            import subprocess
+            uploader_script = Path(__file__).parent / "s3_uploader.py"
+
+            # Create log file for subprocess output
+            log_dir = Path(__file__).parent / "logs"
+            log_dir.mkdir(exist_ok=True)
+            log_file = log_dir / f"s3_uploader_{session_id}.log"
+
+            with open(log_file, 'w') as logfile:
+                subprocess.Popen([
+                    sys.executable,
+                    str(uploader_script),
+                    session_id
+                ], stdout=logfile, stderr=logfile, text=True)
+
+            print(f"Started S3 upload subprocess for session {session_id} (logs: {log_file})")
+
+            return {
+                "message": "S3 upload started in background",
+                "session_id": session_id,
+                "status": "uploading"
+            }
+
+        except Exception as subprocess_error:
+            error_msg = f"Failed to start S3 upload subprocess: {str(subprocess_error)}"
+            print(error_msg)
+            
+            # Update status to failed
+            initial_s3_status["s3_upload_status"] = "failed"
+            initial_s3_status["message"] = error_msg
+            with open(s3_status_path, "w") as f:
+                json.dump(initial_s3_status, f)
+            
+            raise HTTPException(status_code=500, detail=error_msg)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Failed to upload to S3: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to upload to S3: {str(e)}")
+
+# Endpoint to check S3 upload status
+@app.get("/s3-upload-status/{session_id}")
+async def s3_upload_status(session_id: str):
+    """Check the S3 upload status of a session."""
+    session_dir = TEMP_DIR / session_id
+    if not session_dir.exists():
+        raise HTTPException(status_code=404, detail="Session not found.")
+
+    s3_status_path = session_dir / "s3_upload_status.json"
+    if not s3_status_path.exists():
+        return {
+            "session_id": session_id,
+            "s3_upload_status": "not_started",
+            "message": "S3 upload has not been initiated."
+        }
+
+    try:
+        with open(s3_status_path, "r") as f:
+            result = json.load(f)
+        return result
+    except Exception as e:
+        return {
+            "session_id": session_id,
+            "s3_upload_status": "error",
+            "error": f"Failed to read S3 upload status: {str(e)}"
+        }
+
+# Endpoint to manually trigger dataset processing (for recovery)
+@app.post("/process-dataset/{session_id}")
+async def process_dataset_manual(session_id: str):
+    """Manually trigger dataset processing for a session."""
+    session_dir = TEMP_DIR / session_id
+    if not session_dir.exists():
+        raise HTTPException(status_code=404, detail="Session not found.")
+
+    zip_files = list(session_dir.glob("*.zip"))
+    if not zip_files:
+        raise HTTPException(status_code=400, detail="No zip file found for this session.")
+
+    try:
+        import subprocess
+        processor_script = Path(__file__).parent / "dataset_processor.py"
+
+        # Create log file for subprocess output
+        log_dir = Path(__file__).parent / "logs"
+        log_dir.mkdir(exist_ok=True)
+        log_file = log_dir / f"dataset_processor_{session_id}.log"
+
+        with open(log_file, 'w') as logfile:
+            subprocess.Popen([
+                sys.executable,
+                str(processor_script),
+                session_id
+            ], stdout=logfile, stderr=logfile, text=True)
+
+        print(f"Manually started dataset processing subprocess for session {session_id} (logs: {log_file})")
+
+        return {
+            "message": f"Dataset processing started for session {session_id}",
+            "session_id": session_id
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to start processing: {str(e)}")
+
+# Endpoint to get debug logs for a session
+@app.get("/debug/logs/{session_id}")
+async def get_debug_logs(session_id: str, lines: int = 100):
+    """Get debug logs for a specific session."""
+    try:
+        from logger import get_session_logs
+        logs = get_session_logs(session_id, lines)
+
+        return {
+            "session_id": session_id,
+            "logs": logs,
+            "total_lines": len(logs)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve logs: {str(e)}")
+
+# Endpoint to get all available log files
+@app.get("/debug/log-files")
+async def get_log_files():
+    """Get list of all available log files."""
+    try:
+        log_dir = Path(__file__).parent / "logs"
+        if not log_dir.exists():
+            return {"log_files": []}
+
+        log_files = []
+        for log_file in log_dir.glob("*.log"):
+            try:
+                stat = log_file.stat()
+                log_files.append({
+                    "filename": log_file.name,
+                    "size": stat.st_size,
+                    "modified": stat.st_mtime,
+                    "session_id": log_file.stem.split('_')[-1] if '_' in log_file.stem else None,
+                    "type": log_file.stem.split('_')[0] if '_' in log_file.stem else log_file.stem
+                })
+            except Exception as e:
+                print(f"Error reading log file {log_file}: {e}")
+
+        # Sort by modification time (newest first)
+        log_files.sort(key=lambda x: x["modified"], reverse=True)
+
+        return {"log_files": log_files}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to list log files: {str(e)}")
+
+# Endpoint to clean up old log files
+@app.post("/debug/cleanup")
+async def cleanup_logs(days: int = 7):
+    """Clean up log files older than specified days."""
+    try:
+        from logger import cleanup_old_logs
+        cleanup_old_logs(days)
+        return {"message": f"Cleaned up log files older than {days} days"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to cleanup logs: {str(e)}")
 
 from typing import Optional
 from fastapi import Request
@@ -612,3 +881,90 @@ async def train_s3(zip_name: str, request: Request, session_id: Optional[str] = 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Training failed: {str(e)}")
 
+
+@app.get("/download-model/{session_id}")
+async def download_model(session_id: str, format: str = None):
+    """Download the trained model for a completed training session."""
+    try:
+        available_formats = {}
+
+        # Try to find models in S3 first (for SageMaker trained models)
+        aws_helper = AWSHelper("curate-sagemaker-bucket-123456789012")
+        s3_client = aws_helper.s3_client
+        bucket = aws_helper.bucket
+
+        # Look for model files in the session's output directory
+        prefix = f"curate/output/{session_id}/"
+        response = s3_client.list_objects_v2(Bucket=bucket, Prefix=prefix)
+
+        if response.get('Contents'):
+            for obj in response['Contents']:
+                key = obj['Key']
+                if key.endswith('.keras'):
+                    available_formats['keras'] = key
+                elif key.endswith('.onnx'):
+                    available_formats['onnx'] = key
+                elif key.endswith('.h5'):
+                    available_formats['h5'] = key
+                elif 'saved_model.pb' in key:
+                    available_formats['saved_model'] = key
+
+        # If not found in S3, check local temp directory (for local training)
+        if not available_formats:
+            session_dir = TEMP_DIR / session_id
+            if session_dir.exists():
+                for file_path in session_dir.glob('**/*'):
+                    if file_path.is_file():
+                        if file_path.name.endswith('.keras'):
+                            available_formats['keras'] = str(file_path)
+                        elif file_path.name.endswith('.onnx'):
+                            available_formats['onnx'] = str(file_path)
+                        elif file_path.name.endswith('.h5'):
+                            available_formats['h5'] = str(file_path)
+                        elif 'saved_model.pb' in str(file_path):
+                            available_formats['saved_model'] = str(file_path)
+
+        if not available_formats:
+            raise HTTPException(status_code=404, detail="No models found for this session")
+
+        # If no specific format requested, return info about available formats
+        if format is None:
+            return {
+                "available_formats": list(available_formats.keys()),
+                "message": "Use /download-model/{session_id}?format={keras|onnx|h5} to download specific format"
+            }
+
+        # Handle specific format request
+        if format not in available_formats:
+            raise HTTPException(status_code=404, detail=f"Format '{format}' not available. Available: {list(available_formats.keys())}")
+
+        file_key = available_formats[format]
+
+        # Handle S3 files
+        if file_key.startswith('curate/output/'):
+            import boto3
+            s3_client = boto3.client('s3', region_name=aws_helper.s3_client.meta.region_name)
+            presigned_url = s3_client.generate_presigned_url(
+                'get_object',
+                Params={'Bucket': bucket, 'Key': file_key},
+                ExpiresIn=3600  # 1 hour
+            )
+
+            return {
+                "download_url": presigned_url,
+                "filename": file_key.split('/')[-1],
+                "format": format
+            }
+
+        # Handle local files
+        else:
+            return FileResponse(
+                path=file_key,
+                filename=file_key.split('/')[-1] if '/' in file_key else file_key.split('\\')[-1],
+                media_type='application/octet-stream'
+            )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to download model: {str(e)}")

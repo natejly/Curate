@@ -56,7 +56,7 @@ interface LiveMetricsProps {
   metricsData?: MetricsData | null;
 }
 
-export default function LiveMetrics({ metricsData }: LiveMetricsProps) {
+export default function LiveMetrics({ sessionId, metricsData }: LiveMetricsProps) {
   // Determine connection status based on metrics data
   const getConnectionStatus = () => {
     if (!metricsData) return 'connecting';
@@ -69,6 +69,37 @@ export default function LiveMetrics({ metricsData }: LiveMetricsProps) {
 
   // Use metricsData directly instead of component state
   const currentMetricsData = metricsData;
+
+  // Handle model download
+  const handleDownloadModel = async (format: 'keras' | 'onnx') => {
+    if (!sessionId) return;
+
+    try {
+      const response = await fetch(`${process.env.BACKEND_URL || 'http://localhost:8000'}/download-model/${sessionId}?format=${format}`);
+      if (!response.ok) {
+        throw new Error('Failed to get download URL');
+      }
+
+      const data = await response.json();
+
+      if (data.download_url) {
+        // Create a temporary link and trigger download
+        const link = document.createElement('a');
+        link.href = data.download_url;
+        link.download = data.filename || `trained_model.${format}`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      } else if (data.available_formats) {
+        alert(`Available formats: ${data.available_formats.join(', ')}. Please try a different format.`);
+      } else {
+        alert(`Model download not available for ${format} format. Please check that training has completed successfully.`);
+      }
+    } catch (error) {
+      console.error('Download error:', error);
+      alert(`Failed to download ${format} model. Please try again later.`);
+    }
+  };
 
   const createChartData = (metrics: Array<{ epoch: number; loss: number; accuracy: number; val_loss: number; val_accuracy: number; timestamp: string }>, label: string, color: string, valueKey: keyof typeof metrics[0]) => {
     return {
@@ -313,9 +344,33 @@ export default function LiveMetrics({ metricsData }: LiveMetricsProps) {
               </div>
             ))}
           </div>
-                      <div className="mt-3 text-xs text-green-500">
+                      <div className="mt-3 flex items-center justify-between">
+            <div className="text-xs text-green-500">
               These results show the model&apos;s performance on the held-out test dataset
             </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => handleDownloadModel('keras')}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors duration-200 flex items-center gap-1"
+                title="Download TensorFlow model (.keras)"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                .keras
+              </button>
+              <button
+                onClick={() => handleDownloadModel('onnx')}
+                className="bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors duration-200 flex items-center gap-1"
+                title="Download ONNX model (.onnx)"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                .onnx
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
