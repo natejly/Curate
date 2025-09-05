@@ -100,7 +100,7 @@ async def debug_training_log(session_id: str):
             bucket_name = "curate-sagemaker-bucket-123456789012"
 
             # Try to get the training log from S3
-            training_log_key = f"curate/models/{session_id}/training_log.json"
+            training_log_key = f"curate/logs/{session_id}/training_log.json"
 
             response = s3_client.get_object(Bucket=bucket_name, Key=training_log_key)
             log_content = response['Body'].read().decode('utf-8')
@@ -144,7 +144,7 @@ async def get_model_stats(session_id: str):
                 bucket_name = "curate-sagemaker-bucket-123456789012"
 
                 # Try to get the training log from S3
-                training_log_key = f"curate/models/{session_id}/training_log.json"
+                training_log_key = f"curate/logs/{session_id}/training_log.json"
 
                 response = s3_client.get_object(Bucket=bucket_name, Key=training_log_key)
                 log_content = response['Body'].read().decode('utf-8')

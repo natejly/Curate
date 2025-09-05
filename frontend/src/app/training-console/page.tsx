@@ -9,7 +9,7 @@ function TrainingConsoleContent() {
   const searchParams = useSearchParams();
   const sessionId = searchParams.get("sessionId");
   const [consoleLogs, setConsoleLogs] = useState("");
-  const [trainStatus, setTrainStatus] = useState("Training started...");
+  const [trainStatus, setTrainStatus] = useState("Waiting for training to start...");
   const [metricsData, setMetricsData] = useState(null);
   const consoleRef = useRef<HTMLDivElement>(null);
   const [isUserScrolling, setIsUserScrolling] = useState(false);
@@ -140,7 +140,7 @@ function TrainingConsoleContent() {
               className="text-green-200 font-mono text-sm h-[400px] w-full overflow-y-auto bg-gray-900 p-4 rounded relative"
               style={{whiteSpace: 'pre-wrap'}}
             >
-              {consoleLogs || "Starting Training Instance..."}
+              {consoleLogs}
             </div>
 
             {/* Scroll to Bottom Button */}
