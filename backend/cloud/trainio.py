@@ -114,10 +114,7 @@ def parse_s3_path(s3_path):
 
 def save_training_log(trainer, model_dir, session_id=None):
     """Save training log to model directory and ensure consistent S3 path."""
-    if not session_id:
-        raise ValueError("session_id is required for training log saving")
-        
-    # Always save to curate/models/session_id/training_log.json
+    # Always save to the model directory, regardless of session_id
     training_log_path = os.path.join(model_dir, 'training_log.json')
     logger.info(f"Saving training log to: {training_log_path}")
     
