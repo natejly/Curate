@@ -52,6 +52,7 @@ class ImgClassTrainer:
 
         # Extract dataset name from path
         self.dataset_name = self.parser.dataset_name
+        print(f"[DEBUG]Dataset name: {self.dataset_name}")
 
         # Config
         self.base_model_name = base_model_name
@@ -85,7 +86,6 @@ class ImgClassTrainer:
         self.metrics = None
         self.history_stage1 = None
         self.history_stage2 = None
-        self.dataset_name = None
         
         # Training log integration
         self.training_log = TrainingLog()
