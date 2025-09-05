@@ -118,11 +118,11 @@ def process_dataset(session_id: str):
                 {file_tree}
 
                 Based only on the file tree, extract the most likely ML task.
-                If the task is Image Classification return "Image Classification"
-                If the task is Image Segmentation return "Image Segmentation"
-                If the task is Object Detection return "Object Detection"
-                If the task is Text Classification return "Text Classification"
-                If the task is not any of the above return "NONE"
+                If the task is Image Classification return "Image Classification". Be strict. It must be a single folder with images or train, validation, and test folders with images.
+                If the task is Image Segmentation return "Image Segmentation". Be strict.
+                If the task is Object Detection return "Object Detection". Be strict.
+                If the task is Text Classification return "Text Classification". Be strict.
+                If the task is not any of the above return "NONE". Be strict.
                 Only return one of these exact strings. Be strict.
                 """
 
@@ -145,7 +145,11 @@ def process_dataset(session_id: str):
             warning_msg = "Warning: OPENAI_API_KEY not set, skipping task inference"
             logger.warning(warning_msg)
             print(warning_msg)
-
+        if llm_task == "NONE":
+            error_msg = "This task is not supported. Currently only Image Classification is supported."
+            logger.error(error_msg)
+            print(error_msg)
+            return False
         # Prepare result
         result = {
             "session_id": session_id,
