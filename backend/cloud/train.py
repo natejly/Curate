@@ -203,7 +203,27 @@ def main():
             logger.warning("CloudWatch logging setup failed, using default logging")
             logger.warning("watchtower not installed; using default SageMaker logs only")
             print(f"[DEBUG] Custom CloudWatch logging FAILED, using SageMaker default logs")
+        class _StreamToLogger:
 
+            def __init__(self, level):
+
+                self.level = level
+
+            def write(self, message):
+
+                msg = message.rstrip()
+
+                if msg:
+
+                    logging.getLogger().log(self.level, msg)
+
+            def flush(self):
+
+                pass
+
+        sys.stdout = _StreamToLogger(logging.INFO)
+
+        sys.stderr = _StreamToLogger(logging.ERROR)
         # Logging is already configured and will capture training progress
         
         logger.info("Starting SageMaker training job")
