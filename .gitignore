@@ -92,7 +92,6 @@ coverage.xml
 
 # Machine Learning and Data
 # Training outputs
-models/
 *.h5
 *.keras
 *.pb

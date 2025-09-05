@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    working_dir: /app
+    volumes:
+      - ./backend:/app
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+    command: ["python", "main.py"]
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    working_dir: /app
+    volumes:
+      - ./frontend:/app
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+    command: ["npm", "run", "dev"]
