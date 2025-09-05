@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 function TrainingConsoleContent() {
   const searchParams = useSearchParams();
   const sessionId = searchParams.get("sessionId");
-  const [consoleLogs, setConsoleLogs] = useState("");
+  const [consoleLogs, setConsoleLogs] = useState(sessionId ? "Starting cloud training instance...\n\n" : "");
   const [trainStatus, setTrainStatus] = useState("Waiting for training to start...");
   const [metricsData, setMetricsData] = useState(null);
   const consoleRef = useRef<HTMLDivElement>(null);
@@ -157,9 +157,6 @@ function TrainingConsoleContent() {
               </button>
             )}
 
-            <div className="mt-4 p-3 rounded bg-black/30 border border-white/10 text-white text-center">
-              {trainStatus}
-            </div>
           </div>
 
           {/* Live Metrics Section */}
