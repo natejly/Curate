@@ -267,9 +267,9 @@ def save_model_with_tensor_fix(trainer, model_dir, dataset_name=None):
         raise
 
 
-def save_model(trainer, model_dir):
+def save_model(trainer, model_dir, dataset_name):
     """Main model saving function."""
-    save_model_with_tensor_fix(trainer, model_dir, trainer.dataset_name)
+    save_model_with_tensor_fix(trainer, model_dir, dataset_name)
 
 
 def setup_model_directory(args):

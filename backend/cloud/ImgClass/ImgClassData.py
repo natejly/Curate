@@ -22,7 +22,8 @@ class ImgClassData:
     """
     def __init__(self, filepath: str, train_ratio: float = 0.7, val_ratio: float = 0.15, test_ratio: float = 0.15, debug = False):
         self.filepath = filepath
-        
+        self.dataset_name = os.path.basename(filepath)
+
         # Get initial tree structure
         tree_json, leaf_files = self.folder_tree_json(filepath)
         img_dims = self.get_image_size(leaf_files, sample_rate=100)
@@ -49,7 +50,6 @@ class ImgClassData:
         self.test_folders = test_folders
         
         # Set directory paths
-        self.dataset_name = os.path.basename(filepath)
         self.train_dir = os.path.dirname(train_folders[0]) if train_folders else None
         self.val_dir = os.path.dirname(val_folders[0]) if val_folders else None
         self.test_dir = os.path.dirname(test_folders[0]) if test_folders else None

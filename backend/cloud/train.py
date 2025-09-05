@@ -376,9 +376,9 @@ def main():
         # Save training log first (independent of model saving)
         save_training_log(trainer, model_dir, getattr(args, 'session_id', None))
         logger.info("Training log saved")
-        
+        ds_name = args.zip_s3_path.split("/")[-1].replace(".zip", "")
         # Then save the model
-        save_model(trainer, model_dir)
+        save_model(trainer, model_dir, ds_name)
         logger.info("Model saved")
 
         # Upload models to S3 for export functionality
