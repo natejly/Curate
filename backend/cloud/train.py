@@ -181,10 +181,181 @@ def setup_cloudwatch_logging(session_id):
         cw_handler.setFormatter(formatter)
         
         return cw_handler
-        
+
     except Exception as e:
         print(f"Failed to setup CloudWatch logging: {e}")
         return None
+
+
+def handle_ai_advisor_workflow(args, data_parser, trainer, logger):
+    """
+    Handle the complete AI advisor workflow including recommendations and application.
+
+    Args:
+        args: Command line arguments
+        data_parser: Data parser instance
+        trainer: Trainer instance
+        logger: Logger instance
+    """
+    if not args.use_ai_advisor:
+        logger.info("AI Advisor not requested, using provided configuration")
+        return
+
+    if not AI_ADVISOR_AVAILABLE:
+        logger.warning("AI Advisor requested but not available. Install openai package: pip install openai")
+        return
+
+    logger.info("=== AI ADVISOR: Analyzing dataset and optimizing hyperparameters ===")
+
+    try:
+        advisor = TrainingAdvisor()
+        recommendations = advisor.get_hyperparameter_recommendations(data_parser, trainer)
+
+        if not recommendations:
+            logger.error("Failed to get recommendations from AI advisor")
+            return
+
+        _process_recommendations(advisor, recommendations, args, trainer, logger)
+
+    except Exception as e:
+        logger.error(f"AI Advisor error: {str(e)}")
+        logger.info("Continuing with original configuration...")
+
+
+def _process_recommendations(advisor, recommendations, args, trainer, logger):
+    """Process and handle AI recommendations."""
+    # Store original config for comparison
+    original_config = advisor.get_current_config(trainer)
+
+    # Display and log recommendations
+    _display_recommendations(recommendations, logger)
+    ai_log_data = advisor.format_recommendations_for_logging(recommendations, original_config)
+
+    # Save recommendations if requested
+    if args.save_recommendations:
+        _save_recommendations(advisor, recommendations, args, logger)
+
+    # Apply recommendations if requested
+    changes_applied = {}
+    if args.apply_recommendations:
+        changes_applied = _apply_recommendations(advisor, trainer, recommendations, original_config, logger)
+        ai_log_data["applied_changes"] = changes_applied
+        ai_log_data["recommendation_summary"]["recommendations_applied"] = len(changes_applied)
+    else:
+        _log_recommendations_not_applied(logger)
+        ai_log_data["applied_changes"] = {}
+        ai_log_data["recommendation_summary"]["recommendations_applied"] = 0
+
+    # Store AI recommendations in trainer for logging
+    trainer.set_ai_recommendations(ai_log_data)
+    logger.info("AI recommendations and reasoning stored for training log")
+
+
+def _display_recommendations(recommendations, logger):
+    """Display AI recommendations summary."""
+    summary = create_advisor_summary(recommendations)
+    logger.info(f"\n{summary}")
+
+
+def _save_recommendations(advisor, recommendations, args, logger):
+    """Save AI recommendations to file."""
+    model_dir = setup_model_directory(args)
+    rec_path = advisor.save_recommendations(
+        recommendations,
+        os.path.join(model_dir, 'ai_recommendations.json')
+    )
+    logger.info(f"AI recommendations saved to: {rec_path}")
+
+
+def _apply_recommendations(advisor, trainer, recommendations, original_config, logger):
+    """
+    Apply AI recommendations and return applied changes.
+
+    Returns:
+        dict: Dictionary of applied changes
+    """
+    logger.info("Applying AI recommendations to trainer configuration...")
+
+    # Debug logging
+    _log_recommendation_structure(recommendations, logger)
+
+    if not advisor.apply_recommendations(trainer, recommendations):
+        logger.warning("Failed to apply some AI recommendations")
+        return {}
+
+    logger.info("Successfully applied AI recommendations")
+
+    # Track and log configuration changes
+    changes_applied = _track_config_changes(advisor, trainer, original_config, logger)
+
+    # Rebuild trainer components if necessary
+    _rebuild_trainer_if_needed(trainer, original_config, advisor.get_current_config(trainer), logger)
+
+    return changes_applied
+
+
+def _log_recommendation_structure(recommendations, logger):
+    """Log the structure of recommendations for debugging."""
+    logger.info(f"Raw recommendations keys: {list(recommendations.keys())}")
+
+    if "hyperparameters" not in recommendations:
+        return
+
+    hyperparams = recommendations["hyperparameters"]
+    logger.info(f"Hyperparameters keys: {list(hyperparams.keys())}")
+
+    if "training_config" in hyperparams:
+        training_config = hyperparams["training_config"]
+        logger.info(f"Training config keys: {list(training_config.keys())}")
+
+
+def _track_config_changes(advisor, trainer, original_config, logger):
+    """Track and log configuration changes."""
+    updated_config = advisor.get_current_config(trainer)
+    changes_applied = {}
+
+    logger.info("Configuration changes applied:")
+
+    for key, new_value in updated_config.items():
+        original_value = original_config.get(key)
+
+        if original_value is None:
+            # New configuration parameter
+            logger.info(f"  {key}: {new_value} (new)")
+            changes_applied[key] = {
+                "original": None,
+                "applied": new_value,
+                "source": "ai_recommendation"
+            }
+        elif original_value != new_value:
+            # Changed configuration parameter
+            logger.info(f"  {key}: {original_value} -> {new_value}")
+            changes_applied[key] = {
+                "original": original_value,
+                "applied": new_value,
+                "source": "ai_recommendation"
+            }
+
+    return changes_applied
+
+
+def _rebuild_trainer_if_needed(trainer, original_config, updated_config, logger):
+    """Rebuild trainer components if image size or model changed."""
+    needs_rebuild = (
+        original_config.get('img_size_used') != updated_config.get('img_size_used') or
+        original_config.get('base_model_name') != updated_config.get('base_model_name')
+    )
+
+    if needs_rebuild:
+        logger.info("Image size or model changed, rebuilding trainer components...")
+        trainer.build_datasets()
+        trainer.build()
+
+
+def _log_recommendations_not_applied(logger):
+    """Log information when recommendations are not applied."""
+    logger.info("AI recommendations generated but not applied (use --apply_recommendations to apply)")
+    logger.info("You can review the recommendations above and manually adjust your configuration")
 
 
 def main():
@@ -256,111 +427,9 @@ def main():
         )
         logger.info(f"Using model: {args.base_model_name}, batch_size: {args.batch_size}, epochs: {args.epochs}")
 
-        
         # AI Advisor Integration
-        if args.use_ai_advisor and AI_ADVISOR_AVAILABLE:
-            logger.info("=== AI ADVISOR: Analyzing dataset and optimizing hyperparameters ===")
-            try:
-                # Initialize AI advisor (will read from OPENAI_API_KEY environment variable)
-                advisor = TrainingAdvisor()
-                
-                # Get AI recommendations
-                recommendations = advisor.get_hyperparameter_recommendations(data_parser, trainer)
-                
-                if recommendations:
-                    # Store original config for comparison
-                    original_config = advisor.get_current_config(trainer)
-                    
-                    # Display summary
-                    summary = create_advisor_summary(recommendations)
-                    logger.info(f"\n{summary}")
-                    
-                    # Format recommendations for training log
-                    ai_log_data = advisor.format_recommendations_for_logging(recommendations, original_config)
-                    
-                    # Save recommendations if requested
-                    if args.save_recommendations:
-                        model_dir = setup_model_directory(args)
-                        rec_path = advisor.save_recommendations(
-                            recommendations, 
-                            os.path.join(model_dir, 'ai_recommendations.json')
-                        )
-                        logger.info(f"AI recommendations saved to: {rec_path}")
-                    
-                    # Apply recommendations if requested
-                    if args.apply_recommendations:
-                        logger.info("Applying AI recommendations to trainer configuration...")
-                        
-                        # Debug: Log the actual structure of recommendations
-                        logger.info(f"Raw recommendations keys: {list(recommendations.keys())}")
-                        if "hyperparameters" in recommendations:
-                            logger.info(f"Hyperparameters keys: {list(recommendations['hyperparameters'].keys())}")
-                            if "training_config" in recommendations["hyperparameters"]:
-                                logger.info(f"Training config keys: {list(recommendations['hyperparameters']['training_config'].keys())}")
-                        
-                        if advisor.apply_recommendations(trainer, recommendations):
-                            logger.info("Successfully applied AI recommendations")
-                            
-                            # Log the configuration changes
-                            updated_config = advisor.get_current_config(trainer)
-                            logger.info("Configuration changes applied:")
-                            changes_applied = {}
-                            for key, value in updated_config.items():
-                                if key in original_config and original_config[key] != value:
-                                    logger.info(f"  {key}: {original_config[key]} -> {value}")
-                                    changes_applied[key] = {
-                                        "original": original_config[key],
-                                        "applied": value,
-                                        "source": "ai_recommendation"
-                                    }
-                                elif key not in original_config:
-                                    logger.info(f"  {key}: {value} (new)")
-                                    changes_applied[key] = {
-                                        "original": None,
-                                        "applied": value,
-                                        "source": "ai_recommendation"
-                                    }
-                            
-                            # Update the AI log data with applied changes
-                            ai_log_data["applied_changes"] = changes_applied
-                            ai_log_data["recommendation_summary"]["recommendations_applied"] = len(changes_applied)
-                            total_recs = ai_log_data["recommendation_summary"]["total_recommendations_made"]
-                            if total_recs > 0:
-                                ai_log_data["recommendation_summary"]["application_rate"] = f"{(len(changes_applied)/total_recs)*100:.1f}%"
-                            
-                            # Rebuild trainer components with new config if image size changed
-                            if (original_config.get('img_size_used') != updated_config.get('img_size_used') or
-                                original_config.get('base_model_name') != updated_config.get('base_model_name')):
-                                logger.info("Image size or model changed, rebuilding trainer components...")
-                                trainer.build_datasets()
-                                trainer.build()
-                        else:
-                            logger.warning("Failed to apply some AI recommendations")
-                            ai_log_data["applied_changes"] = {}
-                            ai_log_data["recommendation_summary"]["recommendations_applied"] = 0
-                            ai_log_data["recommendation_summary"]["application_rate"] = "0%"
-                    else:
-                        logger.info("AI recommendations generated but not applied (use --apply_recommendations to apply)")
-                        logger.info("You can review the recommendations above and manually adjust your configuration")
-                        ai_log_data["applied_changes"] = {}
-                        ai_log_data["recommendation_summary"]["recommendations_applied"] = 0
-                        ai_log_data["recommendation_summary"]["application_rate"] = "0%"
-                    
-                    # Store AI recommendations in trainer for logging
-                    trainer.set_ai_recommendations(ai_log_data)
-                    logger.info("AI recommendations and reasoning stored for training log")
-                else:
-                    logger.error("Failed to get recommendations from AI advisor")
-                    
-            except Exception as e:
-                logger.error(f"AI Advisor error: {str(e)}")
-                logger.info("Continuing with original configuration...")
-                
-        elif args.use_ai_advisor and not AI_ADVISOR_AVAILABLE:
-            logger.warning("AI Advisor requested but not available. Install openai package: pip install openai")
-        else:
-            logger.info("AI Advisor not requested, using provided configuration")
-        
+        handle_ai_advisor_workflow(args, data_parser, trainer, logger)
+
         # Start training
         logger.info("=== STARTING TRAINING ===")
         logger.info(f"Training will run for {args.epochs} epochs with batch size {args.batch_size}")
