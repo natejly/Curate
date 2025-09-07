@@ -442,7 +442,7 @@ def main():
                 advisor = TrainingAdvisor()
                 
                 # Run 5 optimization iterations
-                for iteration in range(1, 6):  # 1 through 5
+                for iteration in range(1, 2):  # 1 through 5
                     logger.info(f"=== OPTIMIZATION ITERATION {iteration} ===")
                     
                     # Set the optimization iteration number in the trainer

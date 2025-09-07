@@ -200,16 +200,9 @@ export default function LiveMetrics({ sessionId, metricsData }: LiveMetricsProps
 
   const currentIterationMetrics = getCurrentIterationMetrics();
 
-  // Create iteration summary data for the bottom chart
+  // Create iteration summary data for the bottom chart (live updates)
   const createIterationSummaryData = () => {
-    if (!currentMetricsData.optimization_iterations || currentMetricsData.optimization_iterations.length === 0) {
-      return null;
-    }
-
-    const iterations = currentMetricsData.optimization_iterations;
-    const labels = ['Initial', ...iterations.map(iter => `Iteration ${iter.iteration}`)];
-    
-    // Extract test accuracies and losses
+    const labels = ['Initial'];
     const testAccuracies = [];
     const testLosses = [];
     
@@ -222,22 +215,27 @@ export default function LiveMetrics({ sessionId, metricsData }: LiveMetricsProps
       testAccuracies.push(typeof initialAcc === 'number' ? initialAcc : 0);
       testLosses.push(typeof initialLoss === 'number' ? initialLoss : 0);
     } else {
+      // If no initial results yet, show 0 as placeholder
       testAccuracies.push(0);
       testLosses.push(0);
     }
     
-    // Add optimization iteration results
-    iterations.forEach(iter => {
-      const acc = iter.test_results.test_accuracy || iter.test_results.accuracy || 0;
-      const loss = iter.test_results.test_loss || iter.test_results.loss || 0;
-      testAccuracies.push(typeof acc === 'number' ? acc : 0);
-      testLosses.push(typeof loss === 'number' ? loss : 0);
-    });
+    // Add optimization iteration results (live updates)
+    if (currentMetricsData.optimization_iterations && currentMetricsData.optimization_iterations.length > 0) {
+      currentMetricsData.optimization_iterations.forEach(iter => {
+        labels.push(`Iteration ${iter.iteration}`);
+        const acc = iter.test_results.test_accuracy || iter.test_results.accuracy || 0;
+        const loss = iter.test_results.test_loss || iter.test_results.loss || 0;
+        testAccuracies.push(typeof acc === 'number' ? acc : 0);
+        testLosses.push(typeof loss === 'number' ? loss : 0);
+      });
+    }
 
     return {
       labels,
       accuracyData: testAccuracies,
-      lossData: testLosses
+      lossData: testLosses,
+      hasIterations: currentMetricsData.optimization_iterations && currentMetricsData.optimization_iterations.length > 0
     };
   };
 
@@ -369,200 +367,6 @@ export default function LiveMetrics({ sessionId, metricsData }: LiveMetricsProps
               />
             </div>
           </div>
-
-          {/* Iteration Summary Chart - Large bottom chart */}
-          {iterationSummaryData && (
-            <div className="mt-8">
-              <h4 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                </svg>
-                Optimization Progress Across Iterations
-              </h4>
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Test Accuracy Across Iterations */}
-                <div className="h-80 bg-gray-900/50 border border-gray-700 rounded-lg p-4">
-                  <Line
-                    data={{
-                      labels: iterationSummaryData.labels,
-                      datasets: [{
-                        label: 'Test Accuracy',
-                        data: iterationSummaryData.accuracyData,
-                        borderColor: '#10b981',
-                        backgroundColor: '#10b98120',
-                        tension: 0.1,
-                        fill: false,
-                        pointRadius: 6,
-                        pointHoverRadius: 8,
-                        pointBackgroundColor: '#10b981',
-                        pointBorderColor: '#ffffff',
-                        pointBorderWidth: 2,
-                      }]
-                    }}
-                    options={{
-                      responsive: true,
-                      maintainAspectRatio: false,
-                      plugins: {
-                        legend: {
-                          display: false,
-                        },
-                        title: {
-                          display: true,
-                          text: 'Test Accuracy Across Iterations',
-                          font: {
-                            size: 16,
-                            weight: 'bold' as const,
-                          },
-                          color: '#ffffff',
-                        },
-                      },
-                      scales: {
-                        x: {
-                          ticks: {
-                            color: '#ffffff',
-                          },
-                          grid: {
-                            color: '#374151',
-                          },
-                        },
-                        y: {
-                          beginAtZero: true,
-                          max: 1,
-                          ticks: {
-                            color: '#ffffff',
-                            callback: function(value) {
-                              return (Number(value) * 100).toFixed(1) + '%';
-                            }
-                          },
-                          grid: {
-                            color: '#374151',
-                          },
-                        }
-                      },
-                      animation: {
-                        duration: 500,
-                      },
-                    }}
-                  />
-                </div>
-
-                {/* Test Loss Across Iterations */}
-                <div className="h-80 bg-gray-900/50 border border-gray-700 rounded-lg p-4">
-                  <Line
-                    data={{
-                      labels: iterationSummaryData.labels,
-                      datasets: [{
-                        label: 'Test Loss',
-                        data: iterationSummaryData.lossData,
-                        borderColor: '#ef4444',
-                        backgroundColor: '#ef444420',
-                        tension: 0.1,
-                        fill: false,
-                        pointRadius: 6,
-                        pointHoverRadius: 8,
-                        pointBackgroundColor: '#ef4444',
-                        pointBorderColor: '#ffffff',
-                        pointBorderWidth: 2,
-                      }]
-                    }}
-                    options={{
-                      responsive: true,
-                      maintainAspectRatio: false,
-                      plugins: {
-                        legend: {
-                          display: false,
-                        },
-                        title: {
-                          display: true,
-                          text: 'Test Loss Across Iterations',
-                          font: {
-                            size: 16,
-                            weight: 'bold' as const,
-                          },
-                          color: '#ffffff',
-                        },
-                      },
-                      scales: {
-                        x: {
-                          ticks: {
-                            color: '#ffffff',
-                          },
-                          grid: {
-                            color: '#374151',
-                          },
-                        },
-                        y: {
-                          beginAtZero: true,
-                          ticks: {
-                            color: '#ffffff',
-                          },
-                          grid: {
-                            color: '#374151',
-                          },
-                        }
-                      },
-                      animation: {
-                        duration: 500,
-                      },
-                    }}
-                  />
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Metrics Summary */}
-      {hasData && (
-        <div className="mt-6 p-4 bg-gray-900 rounded-lg">
-          <h4 className="text-white font-semibold mb-2">Latest Training Metrics</h4>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
-            <div className="text-gray-300">
-              <span className="text-gray-500">Epoch:</span> {currentIterationMetrics[currentIterationMetrics.length - 1]?.epoch}
-            </div>
-            <div className="text-gray-300">
-              <span className="text-gray-500">Loss:</span> {currentIterationMetrics[currentIterationMetrics.length - 1]?.loss.toFixed(4)}
-            </div>
-            <div className="text-gray-300">
-              <span className="text-gray-500">Accuracy:</span> {(currentIterationMetrics[currentIterationMetrics.length - 1]?.accuracy * 100).toFixed(2)}%
-            </div>
-            <div className="text-gray-300">
-              <span className="text-gray-500">Val Acc:</span> {(currentIterationMetrics[currentIterationMetrics.length - 1]?.val_accuracy * 100).toFixed(2)}%
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Final Test Results */}
-      {currentMetricsData.final_test_results && (
-        <div className="mt-6 p-4 bg-green-900/20 border border-green-500/30 rounded-lg">
-          <h4 className="text-green-400 font-semibold mb-3 flex items-center gap-2">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            Final Test Results
-          </h4>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
-            {Object.entries(currentMetricsData.final_test_results).map(([key, value]) => (
-              <div key={key} className="text-green-300">
-                <span className="text-green-500 capitalize">{key.replace('_', ' ')}:</span>
-                {typeof value === 'number' && key.toLowerCase().includes('acc')
-                  ? ` ${(value * 100).toFixed(2)}%`
-                  : typeof value === 'number'
-                    ? ` ${value.toFixed(4)}`
-                    : ` ${value}`
-                }
-              </div>
-            ))}
-          </div>
-          <div className="mt-3 flex items-center justify-between">
-            <div className="text-xs text-green-500">
-              These results show the model&apos;s performance on the held-out test dataset
-            </div>
-            <div className="flex gap-2">
-            </div>
-          </div>
         </div>
       )}
 
@@ -595,7 +399,7 @@ export default function LiveMetrics({ sessionId, metricsData }: LiveMetricsProps
                       <div key={key} className="text-blue-200">
                         <span className="text-blue-400 capitalize">{key.replace('_', ' ')}:</span>
                         {typeof value === 'number' && key.toLowerCase().includes('acc')
-                          ? ` ${(value * 100).toFixed(1)}%`
+                          ? ` ${value.toFixed(3)}`
                           : typeof value === 'number'
                             ? ` ${value.toFixed(3)}`
                             : ` ${value}`
@@ -638,6 +442,159 @@ export default function LiveMetrics({ sessionId, metricsData }: LiveMetricsProps
           </div>
         </div>
       )}
+
+      {/* Live Iteration Summary Chart - Always visible at bottom */}
+      <div className="mt-8">
+        <h4 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+          </svg>
+          Live Optimization Progress
+          {iterationSummaryData.hasIterations && (
+            <span className="text-sm text-green-400 bg-green-900/30 px-2 py-1 rounded ml-2">
+              {currentMetricsData.optimization_iterations?.length || 0} iterations
+            </span>
+          )}
+        </h4>
+        
+        {!iterationSummaryData.hasIterations && (
+          <div className="text-center text-gray-400 py-8 mb-4">
+            <p>Optimization iteration results will appear here as training progresses...</p>
+          </div>
+        )}
+        
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Live Test Accuracy Across Iterations */}
+          <div className="h-80 bg-gray-900/50 border border-gray-700 rounded-lg p-4">
+            <Line
+              data={{
+                labels: iterationSummaryData.labels,
+                datasets: [{
+                  label: 'Test Accuracy',
+                  data: iterationSummaryData.accuracyData,
+                  borderColor: '#10b981',
+                  backgroundColor: '#10b98120',
+                  tension: 0.1,
+                  fill: false,
+                  pointRadius: 6,
+                  pointHoverRadius: 8,
+                  pointBackgroundColor: '#10b981',
+                  pointBorderColor: '#ffffff',
+                  pointBorderWidth: 2,
+                }]
+              }}
+              options={{
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                  legend: {
+                    display: false,
+                  },
+                  title: {
+                    display: true,
+                    text: iterationSummaryData.hasIterations 
+                      ? 'Test Accuracy Across Iterations' 
+                      : 'Test Accuracy (Waiting for data...)',
+                    font: {
+                      size: 16,
+                      weight: 'bold' as const,
+                    },
+                    color: '#ffffff',
+                  },
+                },
+                scales: {
+                  x: {
+                    ticks: {
+                      color: '#ffffff',
+                    },
+                    grid: {
+                      color: '#374151',
+                    },
+                  },
+                  y: {
+                    beginAtZero: true,
+                    max: 1,
+                    ticks: {
+                      color: '#ffffff',
+                      // No percent formatting, just show 0-1
+                    },
+                    grid: {
+                      color: '#374151',
+                    },
+                  }
+                },
+                animation: {
+                  duration: 800,
+                },
+              }}
+            />
+          </div>
+
+          {/* Live Test Loss Across Iterations */}
+          <div className="h-80 bg-gray-900/50 border border-gray-700 rounded-lg p-4">
+            <Line
+              data={{
+                labels: iterationSummaryData.labels,
+                datasets: [{
+                  label: 'Test Loss',
+                  data: iterationSummaryData.lossData,
+                  borderColor: '#ef4444',
+                  backgroundColor: '#ef444420',
+                  tension: 0.1,
+                  fill: false,
+                  pointRadius: 6,
+                  pointHoverRadius: 8,
+                  pointBackgroundColor: '#ef4444',
+                  pointBorderColor: '#ffffff',
+                  pointBorderWidth: 2,
+                }]
+              }}
+              options={{
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                  legend: {
+                    display: false,
+                  },
+                  title: {
+                    display: true,
+                    text: iterationSummaryData.hasIterations 
+                      ? 'Test Loss Across Iterations' 
+                      : 'Test Loss (Waiting for data...)',
+                    font: {
+                      size: 16,
+                      weight: 'bold' as const,
+                    },
+                    color: '#ffffff',
+                  },
+                },
+                scales: {
+                  x: {
+                    ticks: {
+                      color: '#ffffff',
+                    },
+                    grid: {
+                      color: '#374151',
+                    },
+                  },
+                  y: {
+                    beginAtZero: true,
+                    ticks: {
+                      color: '#ffffff',
+                    },
+                    grid: {
+                      color: '#374151',
+                    },
+                  }
+                },
+                animation: {
+                  duration: 800,
+                },
+              }}
+            />
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
