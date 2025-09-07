@@ -384,6 +384,207 @@ class TrainingAdvisor:
             logger.error(f"Failed to apply recommendations: {str(e)}")
             return False
     
+    def optimize(self, trainer) -> Optional[Dict[str, Any]]:
+        """
+        Analyze training logs and suggest optimized hyperparameters for better performance.
+        
+        Args:
+            trainer: ImgClassTrainer instance with training history
+            
+        Returns:
+            Dictionary containing optimization recommendations or None if failed
+        """
+        try:
+            # Extract training log data
+            if not hasattr(trainer, 'training_log') or trainer.training_log is None:
+                logger.error("No training log found in trainer")
+                return None
+            
+            # Get the training history and current configuration
+            training_log = trainer.training_log.get_log_data()
+            current_config = self.get_current_config(trainer)
+            
+            logger.info("Analyzing training performance for optimization...")
+            
+            # Create optimization prompt
+            optimization_prompt = self._create_optimization_prompt(training_log, current_config)
+            
+            # Get optimization recommendations from AI
+            optimization_system_prompt = """You are an expert machine learning engineer specializing in training optimization. 
+            Analyze the provided training logs and current configuration to identify performance issues and suggest specific 
+            hyperparameter adjustments to improve model performance.
+
+            Your response MUST be valid JSON with this structure:
+            {
+                "analysis": {
+                    "performance_assessment": "overall assessment of current training",
+                    "identified_issues": ["list of specific issues found"],
+                    "training_trends": "description of observed trends in metrics",
+                    "convergence_status": "assessment of model convergence"
+                },
+                "optimization_recommendations": {
+                    "priority": "high|medium|low",
+                    "training_config": {
+                        "parameter_name": {
+                            "current_value": "current value",
+                            "recommended_value": "new recommended value",
+                            "reasoning": "explanation for this change",
+                            "confidence": 85
+                        }
+                    },
+                    "fine_tuning_config": {
+                        "parameter_name": {
+                            "current_value": "current value", 
+                            "recommended_value": "new recommended value",
+                            "reasoning": "explanation for this change",
+                            "confidence": 85
+                        }
+                    }
+                },
+                "expected_improvements": {
+                    "accuracy_gain": "estimated improvement in accuracy",
+                    "convergence_speed": "expected change in convergence speed",
+                    "stability": "expected change in training stability"
+                },
+                "implementation_notes": ["specific notes about applying these changes"]
+            }"""
+            
+            recommendations = self.call_openai_api(optimization_system_prompt, optimization_prompt)
+            
+            if recommendations:
+                logger.info("Successfully received optimization recommendations")
+                
+                # Apply recommendations using trainer.edit_config to maintain training log updates
+                if "optimization_recommendations" in recommendations:
+                    self._apply_optimization_recommendations(trainer, recommendations["optimization_recommendations"])
+                
+                return recommendations
+            else:
+                logger.error("Failed to get optimization recommendations from AI")
+                return None
+                
+        except Exception as e:
+            logger.error(f"Failed to optimize training: {str(e)}")
+            return None
+    
+    def _create_optimization_prompt(self, training_log: Dict[str, Any], current_config: Dict[str, Any]) -> str:
+        """
+        Create a detailed prompt for training optimization based on logs and config.
+        
+        Args:
+            training_log: Training log data from trainer
+            current_config: Current trainer configuration
+            
+        Returns:
+            Formatted prompt string
+        """
+        prompt = f"""
+        Please analyze the following training results and suggest optimizations:
+
+        CURRENT CONFIGURATION:
+        {json.dumps(current_config, indent=2)}
+
+        TRAINING LOG DATA:
+        {json.dumps(training_log, indent=2)}
+
+        Please analyze:
+        1. Training performance trends (loss, accuracy over epochs)
+        2. Signs of overfitting, underfitting, or poor convergence
+        3. Learning rate effectiveness
+        4. Batch size appropriateness
+        5. Epoch count optimization
+        6. Any other performance bottlenecks
+
+        Suggest specific hyperparameter changes that would improve:
+        - Final model accuracy
+        - Training stability and convergence
+        - Training efficiency
+        - Generalization performance
+
+        Focus on actionable recommendations with clear reasoning.
+        """
+        
+        return prompt
+    
+    def _apply_optimization_recommendations(self, trainer, recommendations: Dict[str, Any]) -> bool:
+        """
+        Apply optimization recommendations using trainer.edit_config to maintain log updates.
+        
+        Args:
+            trainer: ImgClassTrainer instance
+            recommendations: Optimization recommendations dictionary
+            
+        Returns:
+            True if successfully applied, False otherwise
+        """
+        try:
+            changes_applied = {}
+            
+            # Apply training config changes
+            if "training_config" in recommendations:
+                for param, details in recommendations["training_config"].items():
+                    if isinstance(details, dict) and "recommended_value" in details:
+                        old_value = getattr(trainer, param, None)
+                        new_value = details["recommended_value"]
+                        
+                        # Use trainer.edit_config to apply changes
+                        if hasattr(trainer, 'edit_config'):
+                            success = trainer.edit_config(param, new_value)
+                            if success:
+                                changes_applied[param] = {
+                                    "old_value": old_value,
+                                    "new_value": new_value,
+                                    "reasoning": details.get("reasoning", "N/A")
+                                }
+                                logger.info(f"Applied optimization: {param} = {new_value} (was {old_value})")
+                            else:
+                                logger.warning(f"Failed to apply optimization for {param}")
+                        else:
+                            # Fallback to direct assignment
+                            setattr(trainer, param, new_value)
+                            changes_applied[param] = {
+                                "old_value": old_value,
+                                "new_value": new_value,
+                                "reasoning": details.get("reasoning", "N/A")
+                            }
+                            logger.info(f"Applied optimization (direct): {param} = {new_value} (was {old_value})")
+            
+            # Apply fine-tuning config changes
+            if "fine_tuning_config" in recommendations:
+                for param, details in recommendations["fine_tuning_config"].items():
+                    if isinstance(details, dict) and "recommended_value" in details:
+                        old_value = getattr(trainer, param, None)
+                        new_value = details["recommended_value"]
+                        
+                        # Use trainer.edit_config to apply changes
+                        if hasattr(trainer, 'edit_config'):
+                            success = trainer.edit_config(param, new_value)
+                            if success:
+                                changes_applied[param] = {
+                                    "old_value": old_value,
+                                    "new_value": new_value,
+                                    "reasoning": details.get("reasoning", "N/A")
+                                }
+                                logger.info(f"Applied optimization: {param} = {new_value} (was {old_value})")
+                            else:
+                                logger.warning(f"Failed to apply optimization for {param}")
+                        else:
+                            # Fallback to direct assignment
+                            setattr(trainer, param, new_value)
+                            changes_applied[param] = {
+                                "old_value": old_value,
+                                "new_value": new_value,
+                                "reasoning": details.get("reasoning", "N/A")
+                            }
+                            logger.info(f"Applied optimization (direct): {param} = {new_value} (was {old_value})")
+            
+            logger.info(f"Applied {len(changes_applied)} optimization changes")
+            return len(changes_applied) > 0
+            
+        except Exception as e:
+            logger.error(f"Failed to apply optimization recommendations: {str(e)}")
+            return False
+
     def format_recommendations_for_logging(self, recommendations: Dict[str, Any], original_config: Dict[str, Any]) -> Dict[str, Any]:
         """
         Format AI recommendations for inclusion in training logs.
@@ -561,4 +762,5 @@ def create_advisor_summary(recommendations: Dict[str, Any]) -> str:
         
     except Exception as e:
         return f"Error creating summary: {str(e)}"
+    
 

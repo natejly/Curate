@@ -82,12 +82,13 @@ def parse_args():
     parser.add_argument('--unfreeze_percent', type=float, default=0.3, 
                        help="Percentage of layers to unfreeze for fine-tuning")
     parser.add_argument('--dual_stage', action='store_true', help="Enable dual-stage training")
-    parser.add_argument('--use_ai_advisor', action='store_true', 
-                       help="Use AI advisor for hyperparameter optimization")
-    parser.add_argument('--save_recommendations', action='store_true',
-                       help="Save AI recommendations to file")
-    parser.add_argument('--apply_recommendations', action='store_true',
-                       help="Automatically apply AI recommendations (default: False, just display)")
+    # AI Advisor is now always enabled by default - removed command line arguments
+    # parser.add_argument('--use_ai_advisor', action='store_true', 
+    #                    help="Use AI advisor for hyperparameter optimization")
+    # parser.add_argument('--save_recommendations', action='store_true',
+    #                    help="Save AI recommendations to file")
+    # parser.add_argument('--apply_recommendations', action='store_true',
+    #                    help="Automatically apply AI recommendations (default: False, just display)")
     return parser.parse_args()
 
 
@@ -189,20 +190,11 @@ def setup_cloudwatch_logging(session_id):
 
 def handle_ai_advisor_workflow(args, data_parser, trainer, logger):
     """
-    Handle the complete AI advisor workflow including recommendations and application.
-
-    Args:
-        args: Command line arguments
-        data_parser: Data parser instance
-        trainer: Trainer instance
-        logger: Logger instance
+    Handle the complete AI advisor workflow with recommendations and application.
+    AI Advisor is now always enabled by default.
     """
-    if not args.use_ai_advisor:
-        logger.info("AI Advisor not requested, using provided configuration")
-        return
-
     if not AI_ADVISOR_AVAILABLE:
-        logger.warning("AI Advisor requested but not available. Install openai package: pip install openai")
+        logger.warning("AI Advisor not available. Install openai package: pip install openai")
         return
 
     logger.info("=== AI ADVISOR: Analyzing dataset and optimizing hyperparameters ===")
@@ -231,20 +223,33 @@ def _process_recommendations(advisor, recommendations, args, trainer, logger):
     _display_recommendations(recommendations, logger)
     ai_log_data = advisor.format_recommendations_for_logging(recommendations, original_config)
 
-    # Save recommendations if requested
-    if args.save_recommendations:
-        _save_recommendations(advisor, recommendations, args, logger)
+    # Save recommendations (always enabled)
+    _save_recommendations(advisor, recommendations, args, logger)
 
-    # Apply recommendations if requested
-    changes_applied = {}
-    if args.apply_recommendations:
-        changes_applied = _apply_recommendations(advisor, trainer, recommendations, original_config, logger)
-        ai_log_data["applied_changes"] = changes_applied
-        ai_log_data["recommendation_summary"]["recommendations_applied"] = len(changes_applied)
-    else:
-        _log_recommendations_not_applied(logger)
-        ai_log_data["applied_changes"] = {}
-        ai_log_data["recommendation_summary"]["recommendations_applied"] = 0
+    # Apply recommendations (always enabled)
+    changes_applied = _apply_recommendations(advisor, trainer, recommendations, original_config, logger)
+    ai_log_data["applied_changes"] = changes_applied
+    ai_log_data["recommendation_summary"]["recommendations_applied"] = len(changes_applied)
+
+    # Store AI recommendations in trainer for logging
+
+
+def _process_recommendations(advisor, recommendations, args, trainer, logger):
+    """Process and handle AI recommendations."""
+    # Store original config for comparison
+    original_config = advisor.get_current_config(trainer)
+
+    # Display and log recommendations
+    _display_recommendations(recommendations, logger)
+    ai_log_data = advisor.format_recommendations_for_logging(recommendations, original_config)
+
+    # Save recommendations (always enabled)
+    _save_recommendations(advisor, recommendations, args, logger)
+
+    # Apply recommendations (always enabled)
+    changes_applied = _apply_recommendations(advisor, trainer, recommendations, original_config, logger)
+    ai_log_data["applied_changes"] = changes_applied
+    ai_log_data["recommendation_summary"]["recommendations_applied"] = len(changes_applied)
 
     # Store AI recommendations in trainer for logging
     trainer.set_ai_recommendations(ai_log_data)
@@ -351,13 +356,6 @@ def _rebuild_trainer_if_needed(trainer, original_config, updated_config, logger)
         trainer.build_datasets()
         trainer.build()
 
-
-def _log_recommendations_not_applied(logger):
-    """Log information when recommendations are not applied."""
-    logger.info("AI recommendations generated but not applied (use --apply_recommendations to apply)")
-    logger.info("You can review the recommendations above and manually adjust your configuration")
-
-
 def main():
     """Main training function."""
     try:
@@ -436,6 +434,42 @@ def main():
         trainer.run()
         logger.info("=== TRAINING COMPLETED ===")
         trainer.training_log.show()
+        
+        # AI Optimization Iterations
+        if AI_ADVISOR_AVAILABLE:
+            logger.info("=== STARTING AI OPTIMIZATION ITERATIONS ===")
+            try:
+                advisor = TrainingAdvisor()
+                
+                # First optimization iteration
+                logger.info("=== OPTIMIZATION ITERATION 1 ===")
+                optimization_results_1 = advisor.optimize(trainer)
+                if optimization_results_1:
+                    logger.info("Optimization 1 recommendations applied. Running additional training...")
+                    # Run additional training with optimized parameters
+                    trainer.run()
+                    logger.info("=== OPTIMIZATION 1 TRAINING COMPLETED ===")
+                    trainer.training_log.show()
+                    
+                    # Second optimization iteration
+                    logger.info("=== OPTIMIZATION ITERATION 2 ===")
+                    optimization_results_2 = advisor.optimize(trainer)
+                    if optimization_results_2:
+                        logger.info("Optimization 2 recommendations applied. Running final training...")
+                        # Run final training with second set of optimized parameters
+                        trainer.run()
+                        logger.info("=== OPTIMIZATION 2 TRAINING COMPLETED ===")
+                        trainer.training_log.show()
+                    else:
+                        logger.warning("Second optimization iteration failed, using results from first optimization")
+                else:
+                    logger.warning("First optimization iteration failed, using original training results")
+                    
+            except Exception as opt_error:
+                logger.error(f"AI optimization failed: {str(opt_error)}")
+                logger.info("Continuing with original training results...")
+        else:
+            logger.info("AI Advisor not available, skipping optimization iterations")
         
         # Setup model directory and save outputs
         logger.info("=== SAVING MODEL AND LOGS ===")
