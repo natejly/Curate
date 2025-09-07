@@ -261,6 +261,151 @@ Expected JSON response structure:
 }}
 """
 
+OPTIMIZATION_SYSTEM_PROMPT = """You are an expert machine learning engineer specializing in training optimization. 
+Analyze the provided training logs and current configuration to identify performance issues and suggest specific 
+hyperparameter adjustments to improve model performance.
+
+Your response MUST be valid JSON with this exact structure:
+{
+    "analysis": {
+        "performance_assessment": "overall assessment of current training",
+        "identified_issues": ["list of specific issues found"],
+        "training_trends": "description of observed trends in metrics",
+        "convergence_status": "assessment of model convergence"
+    },
+    "optimization_recommendations": {
+        "priority": "high|medium|low",
+        "training_config": {
+            "batch_size": {
+                "current_value": "current batch size",
+                "recommended_value": "new recommended batch size (integer)",
+                "reasoning": "explanation for this change",
+                "confidence": 85
+            },
+            "initial_learning_rate": {
+                "current_value": "current learning rate",
+                "recommended_value": "new recommended learning rate (float)",
+                "reasoning": "explanation for this change",
+                "confidence": 85
+            },
+            "initial_epochs": {
+                "current_value": "current epochs",
+                "recommended_value": "new recommended epochs (integer)",
+                "reasoning": "explanation for this change",
+                "confidence": 85
+            },
+            "image_size": {
+                "current_value": "current image size",
+                "recommended_value": [224, 224],
+                "reasoning": "explanation for this change",
+                "confidence": 85
+            }
+        },
+        "fine_tuning_config": {
+            "fine_tune_learning_rate": {
+                "current_value": "current fine tune learning rate",
+                "recommended_value": "new recommended fine tune learning rate (float)",
+                "reasoning": "explanation for this change",
+                "confidence": 85
+            },
+            "fine_tune_epochs": {
+                "current_value": "current fine tune epochs",
+                "recommended_value": "new recommended fine tune epochs (integer)",
+                "reasoning": "explanation for this change",
+                "confidence": 85
+            },
+            "unfreeze_percent": {
+                "current_value": "current unfreeze percent",
+                "recommended_value": "new recommended unfreeze percent (float 0-1)",
+                "reasoning": "explanation for this change",
+                "confidence": 85
+            }
+        },
+        "model_architecture": {
+            "base_model_name": {
+                "current_value": "current model name",
+                "recommended_value": "new recommended model name",
+                "reasoning": "explanation for this change",
+                "confidence": 85
+            }
+        }
+    },
+    "expected_improvements": {
+        "accuracy_gain": "estimated improvement in accuracy percentage",
+        "convergence_speed": "expected change in convergence speed",
+        "stability": "expected change in training stability"
+    },
+    "implementation_notes": ["specific notes about applying these changes"]
+}
+
+IMPORTANT PARAMETER GUIDELINES:
+- batch_size: Must be integer (16, 32, 64, 128, etc.)
+- initial_learning_rate: Must be float (0.001, 0.0001, etc.)
+- fine_tune_learning_rate: Must be float, typically 10x smaller than initial
+- initial_epochs: Must be integer (5-50 typical range)
+- fine_tune_epochs: Must be integer (5-30 typical range)
+- image_size: Must be array of two integers [height, width]
+- unfreeze_percent: Must be float 0.0-1.0 (0.3 = 30% of layers)
+- base_model_name: Must be valid model string in the EfficientNet family(EfficientNetB0, EfficientNetB1, etc.)
+- confidence: Integer 0-100
+
+Only recommend changes for parameters that need optimization based on the training results."""
+
+OPTIMIZATION_REQUEST_TEMPLATE = """
+Please analyze the following training results and suggest specific optimizations:
+
+CURRENT CONFIGURATION:
+{current_config}
+
+TRAINING LOG DATA:
+{training_log}
+
+ANALYSIS REQUIREMENTS:
+1. **Learning Rate Analysis**: 
+   - Examine loss curves for signs of too high/low learning rates
+   - Check if initial_learning_rate and fine_tune_learning_rate are optimal
+   - Look for oscillations, plateaus, or slow convergence
+
+2. **Batch Size Analysis**:
+   - Evaluate current batch_size effectiveness
+   - Consider memory constraints and convergence stability
+   - Assess impact on gradient quality
+
+3. **Epoch Analysis**:
+   - Determine if initial_epochs and fine_tune_epochs are sufficient
+   - Identify early stopping opportunities or need for more training
+   - Check for overfitting vs underfitting patterns
+
+4. **Model Architecture Analysis**:
+   - Evaluate if base_model_name is appropriate for dataset complexity
+   - Consider model capacity vs dataset size
+   - Assess if image_size is optimal for the chosen model
+
+5. **Fine-tuning Analysis**:
+   - Examine unfreeze_percent effectiveness
+   - Evaluate dual-stage training performance
+   - Check if fine-tuning improves or hurts performance
+
+SPECIFIC PARAMETERS TO EVALUATE:
+- batch_size (current: look in config)
+- initial_learning_rate (current: look in config)
+- initial_epochs (current: look in config)
+- fine_tune_learning_rate (current: look in config)
+- fine_tune_epochs (current: look in config)
+- unfreeze_percent (current: look in config)
+- image_size (current: look in config)
+- base_model_name (current: look in config)
+
+OPTIMIZATION GOALS:
+- Improve final validation accuracy
+- Reduce training time while maintaining quality
+- Enhance model generalization
+- Stabilize training convergence
+- Optimize memory usage efficiency
+
+Focus on actionable, specific parameter changes with clear reasoning based on the training metrics provided.
+"""
+
 def get_hyperparameter_prompt(dataset_info, current_config):
     """Generate the complete prompt for hyperparameter optimization."""
     return HYPERPARAMETER_REQUEST_TEMPLATE.format(
@@ -278,4 +423,11 @@ def get_error_analysis_prompt(training_history, performance_metrics, previous_co
         training_history=training_history,
         performance_metrics=performance_metrics,
         previous_config=previous_config
+    )
+
+def get_optimization_prompt(training_log, current_config):
+    """Generate prompt for training optimization."""
+    return OPTIMIZATION_REQUEST_TEMPLATE.format(
+        training_log=training_log,
+        current_config=current_config
     )

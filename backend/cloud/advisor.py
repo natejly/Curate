@@ -18,7 +18,9 @@ from prompts import (
     HYPERPARAMETER_ADVISOR_SYSTEM_PROMPT,
     get_hyperparameter_prompt,
     get_dataset_analysis_prompt,
-    get_error_analysis_prompt
+    get_error_analysis_prompt,
+    OPTIMIZATION_SYSTEM_PROMPT,
+    get_optimization_prompt
 )
 
 logger = logging.getLogger(__name__)
@@ -407,49 +409,13 @@ class TrainingAdvisor:
             logger.info("Analyzing training performance for optimization...")
             
             # Create optimization prompt
-            optimization_prompt = self._create_optimization_prompt(training_log, current_config)
+            optimization_prompt = get_optimization_prompt(
+                json.dumps(training_log, indent=2),
+                json.dumps(current_config, indent=2)
+            )
             
             # Get optimization recommendations from AI
-            optimization_system_prompt = """You are an expert machine learning engineer specializing in training optimization. 
-            Analyze the provided training logs and current configuration to identify performance issues and suggest specific 
-            hyperparameter adjustments to improve model performance.
-
-            Your response MUST be valid JSON with this structure:
-            {
-                "analysis": {
-                    "performance_assessment": "overall assessment of current training",
-                    "identified_issues": ["list of specific issues found"],
-                    "training_trends": "description of observed trends in metrics",
-                    "convergence_status": "assessment of model convergence"
-                },
-                "optimization_recommendations": {
-                    "priority": "high|medium|low",
-                    "training_config": {
-                        "parameter_name": {
-                            "current_value": "current value",
-                            "recommended_value": "new recommended value",
-                            "reasoning": "explanation for this change",
-                            "confidence": 85
-                        }
-                    },
-                    "fine_tuning_config": {
-                        "parameter_name": {
-                            "current_value": "current value", 
-                            "recommended_value": "new recommended value",
-                            "reasoning": "explanation for this change",
-                            "confidence": 85
-                        }
-                    }
-                },
-                "expected_improvements": {
-                    "accuracy_gain": "estimated improvement in accuracy",
-                    "convergence_speed": "expected change in convergence speed",
-                    "stability": "expected change in training stability"
-                },
-                "implementation_notes": ["specific notes about applying these changes"]
-            }"""
-            
-            recommendations = self.call_openai_api(optimization_system_prompt, optimization_prompt)
+            recommendations = self.call_openai_api(OPTIMIZATION_SYSTEM_PROMPT, optimization_prompt)
             
             if recommendations:
                 logger.info("Successfully received optimization recommendations")
@@ -466,45 +432,6 @@ class TrainingAdvisor:
         except Exception as e:
             logger.error(f"Failed to optimize training: {str(e)}")
             return None
-    
-    def _create_optimization_prompt(self, training_log: Dict[str, Any], current_config: Dict[str, Any]) -> str:
-        """
-        Create a detailed prompt for training optimization based on logs and config.
-        
-        Args:
-            training_log: Training log data from trainer
-            current_config: Current trainer configuration
-            
-        Returns:
-            Formatted prompt string
-        """
-        prompt = f"""
-        Please analyze the following training results and suggest optimizations:
-
-        CURRENT CONFIGURATION:
-        {json.dumps(current_config, indent=2)}
-
-        TRAINING LOG DATA:
-        {json.dumps(training_log, indent=2)}
-
-        Please analyze:
-        1. Training performance trends (loss, accuracy over epochs)
-        2. Signs of overfitting, underfitting, or poor convergence
-        3. Learning rate effectiveness
-        4. Batch size appropriateness
-        5. Epoch count optimization
-        6. Any other performance bottlenecks
-
-        Suggest specific hyperparameter changes that would improve:
-        - Final model accuracy
-        - Training stability and convergence
-        - Training efficiency
-        - Generalization performance
-
-        Focus on actionable recommendations with clear reasoning.
-        """
-        
-        return prompt
     
     def _apply_optimization_recommendations(self, trainer, recommendations: Dict[str, Any]) -> bool:
         """
