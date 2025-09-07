@@ -442,16 +442,16 @@ def main():
                 advisor = TrainingAdvisor()
                 
                 # Run 5 optimization iterations
-                for iteration in range(1, 2):  # 1 through 5
+                for iteration in range(1, 6):  # 1 through 5
                     logger.info(f"=== OPTIMIZATION ITERATION {iteration} ===")
                     
-                    # Set the optimization iteration number in the trainer
+                    # Set the optimization iteration number in the trainer (this will reset model to fresh state)
                     trainer.set_optimization_iteration(iteration)
                     
                     optimization_results = advisor.optimize(trainer)
                     if optimization_results:
-                        logger.info(f"Optimization {iteration} recommendations applied. Running additional training...")
-                        # Run additional training with optimized parameters
+                        logger.info(f"Optimization {iteration} recommendations applied. Running training with fresh model...")
+                        # Run training with optimized parameters on fresh model
                         trainer.run()
                         logger.info(f"=== OPTIMIZATION {iteration} TRAINING COMPLETED ===")
                         trainer.training_log.show()

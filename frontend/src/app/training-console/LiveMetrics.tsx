@@ -202,20 +202,20 @@ export default function LiveMetrics({ sessionId, metricsData }: LiveMetricsProps
 
   // Create iteration summary data for the bottom chart (live updates)
   const createIterationSummaryData = () => {
-    const labels = ['Initial'];
+    const labels = ['Original Run'];
     const testAccuracies = [];
     const testLosses = [];
     
-    // Add initial results (from final_test_results if available)
+    // Add original training run results (the baseline before any optimization)
     if (currentMetricsData.final_test_results) {
-      const initialAcc = currentMetricsData.final_test_results.test_accuracy || 
-                         currentMetricsData.final_test_results.accuracy || 0;
-      const initialLoss = currentMetricsData.final_test_results.test_loss || 
-                          currentMetricsData.final_test_results.loss || 0;
-      testAccuracies.push(typeof initialAcc === 'number' ? initialAcc : 0);
-      testLosses.push(typeof initialLoss === 'number' ? initialLoss : 0);
+      const originalAcc = currentMetricsData.final_test_results.test_accuracy || 
+                          currentMetricsData.final_test_results.accuracy || 0;
+      const originalLoss = currentMetricsData.final_test_results.test_loss || 
+                           currentMetricsData.final_test_results.loss || 0;
+      testAccuracies.push(typeof originalAcc === 'number' ? originalAcc : 0);
+      testLosses.push(typeof originalLoss === 'number' ? originalLoss : 0);
     } else {
-      // If no initial results yet, show 0 as placeholder
+      // If no original results yet, show 0 as placeholder
       testAccuracies.push(0);
       testLosses.push(0);
     }
@@ -223,7 +223,7 @@ export default function LiveMetrics({ sessionId, metricsData }: LiveMetricsProps
     // Add optimization iteration results (live updates)
     if (currentMetricsData.optimization_iterations && currentMetricsData.optimization_iterations.length > 0) {
       currentMetricsData.optimization_iterations.forEach(iter => {
-        labels.push(`Iteration ${iter.iteration}`);
+        labels.push(`Optimization ${iter.iteration}`);
         const acc = iter.test_results.test_accuracy || iter.test_results.accuracy || 0;
         const loss = iter.test_results.test_loss || iter.test_results.loss || 0;
         testAccuracies.push(typeof acc === 'number' ? acc : 0);
@@ -449,17 +449,17 @@ export default function LiveMetrics({ sessionId, metricsData }: LiveMetricsProps
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
           </svg>
-          Live Optimization Progress
+          Training Progress: Original Run vs. Optimizations
           {iterationSummaryData.hasIterations && (
             <span className="text-sm text-green-400 bg-green-900/30 px-2 py-1 rounded ml-2">
-              {currentMetricsData.optimization_iterations?.length || 0} iterations
+              Original + {currentMetricsData.optimization_iterations?.length || 0} optimizations
             </span>
           )}
         </h4>
         
         {!iterationSummaryData.hasIterations && (
           <div className="text-center text-gray-400 py-8 mb-4">
-            <p>Optimization iteration results will appear here as training progresses...</p>
+            <p>Optimization results will appear here alongside the original training run...</p>
           </div>
         )}
         
@@ -493,8 +493,8 @@ export default function LiveMetrics({ sessionId, metricsData }: LiveMetricsProps
                   title: {
                     display: true,
                     text: iterationSummaryData.hasIterations 
-                      ? 'Test Accuracy Across Iterations' 
-                      : 'Test Accuracy (Waiting for data...)',
+                      ? 'Test Accuracy: Original vs. Optimizations' 
+                      : 'Test Accuracy (Original run data...)',
                     font: {
                       size: 16,
                       weight: 'bold' as const,
@@ -559,8 +559,8 @@ export default function LiveMetrics({ sessionId, metricsData }: LiveMetricsProps
                   title: {
                     display: true,
                     text: iterationSummaryData.hasIterations 
-                      ? 'Test Loss Across Iterations' 
-                      : 'Test Loss (Waiting for data...)',
+                      ? 'Test Loss: Original vs. Optimizations' 
+                      : 'Test Loss (Original run data...)',
                     font: {
                       size: 16,
                       weight: 'bold' as const,

@@ -428,14 +428,38 @@ class ImgClassTrainer:
         print(f"Set optimization iteration to: {iteration_number}")
         
         # Reset training history for new iteration (epoch graphs will start fresh)
-        if iteration_number > 1:  # Don't reset for the first optimization iteration
-            self.reset_training_history()
+        # Always reset for optimization iterations to start with fresh model weights
+        self.reset_training_history()
+        
+        # Reset model to fresh state for fair hyperparameter comparison
+        if iteration_number >= 1:  # Reset model for all optimization iterations
+            self.reset_model()
     
     def reset_training_history(self):
         """Reset training history for a new optimization iteration."""
         self.history_stage1 = None
         self.history_stage2 = None
         print("Training history reset for new optimization iteration")
+    
+    def reset_model(self):
+        """Reset model to fresh state with new weights."""
+        print("Resetting model to fresh state for optimization iteration...")
+        
+        # Clear any existing model and base model
+        if hasattr(self, 'model') and self.model is not None:
+            del self.model
+        if hasattr(self, 'base_model') and self.base_model is not None:
+            del self.base_model
+        
+        # Clear TensorFlow session to free memory
+        import tensorflow as tf
+        tf.keras.backend.clear_session()
+        
+        # Reset model attributes (datasets will be rebuilt in run() method)
+        self.base_model = None
+        self.model = None
+        
+        print("Model reset complete - fresh weights will be initialized on next build()")
     
     def log_training_results(self):
         """Log training results based on dual_stage flag."""
