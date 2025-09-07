@@ -447,66 +447,106 @@ class TrainingAdvisor:
         try:
             changes_applied = {}
             
-            # Apply training config changes
+            # Collect all parameters for edit_config
+            config_params = {}
+            
+            # Get current values as defaults
+            config_params['base_model_name'] = trainer.base_model_name
+            config_params['batch_size'] = trainer.batch_size
+            config_params['initial_learning_rate'] = trainer.initial_learning_rate
+            config_params['fine_tune_learning_rate'] = trainer.fine_tune_learning_rate
+            config_params['initial_epochs'] = trainer.initial_epochs
+            config_params['fine_tune_epochs'] = trainer.fine_tune_epochs
+            config_params['dual_stage'] = trainer.dual_stage
+            config_params['custom_img_size'] = trainer.custom_img_size
+            config_params['unfreeze_percent'] = trainer.unfreeze_percent
+            
+            # Update with recommendations from training_config
             if "training_config" in recommendations:
                 for param, details in recommendations["training_config"].items():
                     if isinstance(details, dict) and "recommended_value" in details:
-                        old_value = getattr(trainer, param, None)
+                        old_value = config_params.get(param)
                         new_value = details["recommended_value"]
                         
-                        # Use trainer.edit_config to apply changes
-                        if hasattr(trainer, 'edit_config'):
-                            success = trainer.edit_config(param, new_value)
-                            if success:
-                                changes_applied[param] = {
-                                    "old_value": old_value,
-                                    "new_value": new_value,
-                                    "reasoning": details.get("reasoning", "N/A")
-                                }
-                                logger.info(f"Applied optimization: {param} = {new_value} (was {old_value})")
-                            else:
-                                logger.warning(f"Failed to apply optimization for {param}")
+                        # Special handling for image_size -> custom_img_size
+                        if param == "image_size":
+                            config_params['custom_img_size'] = tuple(new_value) if isinstance(new_value, list) else new_value
+                            changes_applied['custom_img_size'] = {
+                                "old_value": old_value,
+                                "new_value": new_value,
+                                "reasoning": details.get("reasoning", "N/A")
+                            }
                         else:
-                            # Fallback to direct assignment
-                            setattr(trainer, param, new_value)
+                            config_params[param] = new_value
                             changes_applied[param] = {
                                 "old_value": old_value,
                                 "new_value": new_value,
                                 "reasoning": details.get("reasoning", "N/A")
                             }
-                            logger.info(f"Applied optimization (direct): {param} = {new_value} (was {old_value})")
             
-            # Apply fine-tuning config changes
+            # Update with recommendations from fine_tuning_config
             if "fine_tuning_config" in recommendations:
                 for param, details in recommendations["fine_tuning_config"].items():
                     if isinstance(details, dict) and "recommended_value" in details:
-                        old_value = getattr(trainer, param, None)
+                        old_value = config_params.get(param)
                         new_value = details["recommended_value"]
-                        
-                        # Use trainer.edit_config to apply changes
-                        if hasattr(trainer, 'edit_config'):
-                            success = trainer.edit_config(param, new_value)
-                            if success:
-                                changes_applied[param] = {
-                                    "old_value": old_value,
-                                    "new_value": new_value,
-                                    "reasoning": details.get("reasoning", "N/A")
-                                }
-                                logger.info(f"Applied optimization: {param} = {new_value} (was {old_value})")
-                            else:
-                                logger.warning(f"Failed to apply optimization for {param}")
-                        else:
-                            # Fallback to direct assignment
-                            setattr(trainer, param, new_value)
+                        config_params[param] = new_value
+                        changes_applied[param] = {
+                            "old_value": old_value,
+                            "new_value": new_value,
+                            "reasoning": details.get("reasoning", "N/A")
+                        }
+            
+            # Update with recommendations from model_architecture
+            if "model_architecture" in recommendations:
+                for param, details in recommendations["model_architecture"].items():
+                    if isinstance(details, dict) and "recommended_value" in details:
+                        old_value = config_params.get(param)
+                        new_value = details["recommended_value"]
+                        # Map base_model_name parameter
+                        if param == "base_model_name":
+                            config_params['base_model_name'] = new_value
                             changes_applied[param] = {
                                 "old_value": old_value,
                                 "new_value": new_value,
                                 "reasoning": details.get("reasoning", "N/A")
                             }
-                            logger.info(f"Applied optimization (direct): {param} = {new_value} (was {old_value})")
             
-            logger.info(f"Applied {len(changes_applied)} optimization changes")
-            return len(changes_applied) > 0
+            # Apply all changes at once using edit_config
+            if changes_applied and hasattr(trainer, 'edit_config'):
+                try:
+                    trainer.edit_config(
+                        base_model_name=config_params['base_model_name'],
+                        batch_size=config_params['batch_size'],
+                        initial_learning_rate=config_params['initial_learning_rate'],
+                        fine_tune_learning_rate=config_params['fine_tune_learning_rate'],
+                        initial_epochs=config_params['initial_epochs'],
+                        fine_tune_epochs=config_params['fine_tune_epochs'],
+                        dual_stage=config_params['dual_stage'],
+                        custom_img_size=config_params['custom_img_size'],
+                        unfreeze_percent=config_params['unfreeze_percent']
+                    )
+                    
+                    # Log all applied changes
+                    for param, change_info in changes_applied.items():
+                        logger.info(f"Applied optimization: {param} = {change_info['new_value']} (was {change_info['old_value']})")
+                    
+                    logger.info(f"Successfully applied {len(changes_applied)} optimization changes using edit_config")
+                    return True
+                    
+                except Exception as edit_error:
+                    logger.error(f"Failed to apply optimizations using edit_config: {str(edit_error)}")
+                    # Fallback to direct assignment
+                    for param, change_info in changes_applied.items():
+                        try:
+                            setattr(trainer, param, change_info['new_value'])
+                            logger.info(f"Applied optimization (fallback): {param} = {change_info['new_value']}")
+                        except Exception as fallback_error:
+                            logger.warning(f"Failed to apply {param}: {str(fallback_error)}")
+                    return True
+            else:
+                logger.info("No optimization changes to apply")
+                return False
             
         except Exception as e:
             logger.error(f"Failed to apply optimization recommendations: {str(e)}")
