@@ -202,33 +202,40 @@ export default function LiveMetrics({ sessionId, metricsData }: LiveMetricsProps
 
   // Create iteration summary data for the bottom chart (live updates)
   const createIterationSummaryData = () => {
-    const labels = ['Original Run'];
+    const labels = [];
     const testAccuracies = [];
     const testLosses = [];
     
     // Add original training run results (the baseline before any optimization)
     if (currentMetricsData.final_test_results) {
+      labels.push('Original Run');
       const originalAcc = currentMetricsData.final_test_results.test_accuracy || 
                           currentMetricsData.final_test_results.accuracy || 0;
       const originalLoss = currentMetricsData.final_test_results.test_loss || 
                            currentMetricsData.final_test_results.loss || 0;
       testAccuracies.push(typeof originalAcc === 'number' ? originalAcc : 0);
       testLosses.push(typeof originalLoss === 'number' ? originalLoss : 0);
-    } else {
-      // If no original results yet, show 0 as placeholder
-      testAccuracies.push(0);
-      testLosses.push(0);
     }
     
-    // Add optimization iteration results (live updates)
+    // Add optimization iteration results (live updates) - these should be cumulative/progressive
     if (currentMetricsData.optimization_iterations && currentMetricsData.optimization_iterations.length > 0) {
-      currentMetricsData.optimization_iterations.forEach(iter => {
-        labels.push(`Optimization ${iter.iteration}`);
+      // Sort iterations by iteration number to ensure proper order
+      const sortedIterations = [...currentMetricsData.optimization_iterations].sort((a, b) => a.iteration - b.iteration);
+      
+      sortedIterations.forEach(iter => {
+        labels.push(`Iteration ${iter.iteration}`);
         const acc = iter.test_results.test_accuracy || iter.test_results.accuracy || 0;
         const loss = iter.test_results.test_loss || iter.test_results.loss || 0;
         testAccuracies.push(typeof acc === 'number' ? acc : 0);
         testLosses.push(typeof loss === 'number' ? loss : 0);
       });
+    }
+
+    // If no data yet, show placeholder
+    if (labels.length === 0) {
+      labels.push('Waiting for results...');
+      testAccuracies.push(0);
+      testLosses.push(0);
     }
 
     return {
@@ -240,6 +247,15 @@ export default function LiveMetrics({ sessionId, metricsData }: LiveMetricsProps
   };
 
   const iterationSummaryData = createIterationSummaryData();
+  
+  // Debug logging to help troubleshoot the chart data
+  console.log('Iteration Summary Data:', {
+    labels: iterationSummaryData.labels,
+    accuracyData: iterationSummaryData.accuracyData,
+    lossData: iterationSummaryData.lossData,
+    hasIterations: iterationSummaryData.hasIterations,
+    optimizationIterations: currentMetricsData.optimization_iterations?.length || 0
+  });
 
   return (
     <div className="bg-black border border-white/20 rounded-lg p-6">
@@ -313,7 +329,12 @@ export default function LiveMetrics({ sessionId, metricsData }: LiveMetricsProps
                   },
                   scales: {
                     ...chartOptions.scales,
-                    y: { ...chartOptions.scales.y, max: 1 }
+                    y: { 
+                      ...chartOptions.scales.y, 
+                      beginAtZero: false,
+                      max: 1,
+                      // Adaptive scaling with accuracy cap at 1
+                    }
                   }
                 }}
               />
@@ -361,7 +382,12 @@ export default function LiveMetrics({ sessionId, metricsData }: LiveMetricsProps
                   },
                   scales: {
                     ...chartOptions.scales,
-                    y: { ...chartOptions.scales.y, max: 1 }
+                    y: { 
+                      ...chartOptions.scales.y, 
+                      beginAtZero: false,
+                      max: 1,
+                      // Adaptive scaling with accuracy cap at 1
+                    }
                   }
                 }}
               />
@@ -493,8 +519,8 @@ export default function LiveMetrics({ sessionId, metricsData }: LiveMetricsProps
                   title: {
                     display: true,
                     text: iterationSummaryData.hasIterations 
-                      ? 'Test Accuracy: Original vs. Optimizations' 
-                      : 'Test Accuracy (Original run data...)',
+                      ? `Test Accuracy Progress (${iterationSummaryData.accuracyData.length} points)` 
+                      : 'Test Accuracy (Waiting for data...)',
                     font: {
                       size: 16,
                       weight: 'bold' as const,
@@ -512,8 +538,9 @@ export default function LiveMetrics({ sessionId, metricsData }: LiveMetricsProps
                     },
                   },
                   y: {
-                    beginAtZero: true,
+                    beginAtZero: false,
                     max: 1,
+                    // Adaptive scaling with accuracy cap at 1
                     ticks: {
                       color: '#ffffff',
                       // No percent formatting, just show 0-1
@@ -559,8 +586,8 @@ export default function LiveMetrics({ sessionId, metricsData }: LiveMetricsProps
                   title: {
                     display: true,
                     text: iterationSummaryData.hasIterations 
-                      ? 'Test Loss: Original vs. Optimizations' 
-                      : 'Test Loss (Original run data...)',
+                      ? `Test Loss Progress (${iterationSummaryData.lossData.length} points)` 
+                      : 'Test Loss (Waiting for data...)',
                     font: {
                       size: 16,
                       weight: 'bold' as const,

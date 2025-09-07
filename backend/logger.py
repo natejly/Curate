@@ -55,6 +55,45 @@ def setup_logger(name: str, session_id: str = None, level: int = logging.DEBUG):
 
     return logger
 
+def setup_llm_logger(session_id: str = None, level: int = logging.DEBUG):
+    """
+    Setup specialized logger for LLM input/output debugging.
+
+    Args:
+        session_id: Optional session ID for session-specific logs
+        level: Logging level (default: DEBUG)
+    """
+    logger_name = "llm_debug"
+    logger = logging.getLogger(logger_name)
+    logger.setLevel(level)
+
+    # Clear any existing handlers
+    logger.handlers.clear()
+
+    # Create detailed formatter for LLM logs
+    llm_formatter = logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
+
+    # File handler - session-specific if session_id provided
+    if session_id:
+        log_filename = LOGS_DIR / f"llm_debug_{session_id}.log"
+    else:
+        log_filename = LOGS_DIR / f"llm_debug.log"
+
+    file_handler = logging.FileHandler(log_filename)
+    file_handler.setLevel(level)
+    file_handler.setFormatter(llm_formatter)
+    logger.addHandler(file_handler)
+
+    # Console handler for real-time output (less verbose)
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.WARNING)  # Only show warnings/errors in console
+    console_handler.setFormatter(llm_formatter)
+    logger.addHandler(console_handler)
+
+    return logger
+
 def get_session_logs(session_id: str, limit: int = 100):
     """
     Get recent logs for a specific session.
@@ -66,7 +105,8 @@ def get_session_logs(session_id: str, limit: int = 100):
     logs = []
     log_files = [
         LOGS_DIR / f"upload_handler_{session_id}.log",
-        LOGS_DIR / f"dataset_processor_{session_id}.log"
+        LOGS_DIR / f"dataset_processor_{session_id}.log",
+        LOGS_DIR / f"llm_debug_{session_id}.log"
     ]
 
     for log_file in log_files:

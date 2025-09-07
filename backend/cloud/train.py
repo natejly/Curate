@@ -200,7 +200,9 @@ def handle_ai_advisor_workflow(args, data_parser, trainer, logger):
     logger.info("=== AI ADVISOR: Analyzing dataset and optimizing hyperparameters ===")
 
     try:
-        advisor = TrainingAdvisor()
+        # Pass session_id for LLM debugging logs
+        session_id = getattr(args, 'session_id', None)
+        advisor = TrainingAdvisor(session_id=session_id)
         recommendations = advisor.get_hyperparameter_recommendations(data_parser, trainer)
 
         if not recommendations:
@@ -439,7 +441,9 @@ def main():
         if AI_ADVISOR_AVAILABLE:
             logger.info("=== STARTING AI OPTIMIZATION ITERATIONS ===")
             try:
-                advisor = TrainingAdvisor()
+                # Pass session_id for LLM debugging logs
+                session_id = getattr(args, 'session_id', None)
+                advisor = TrainingAdvisor(session_id=session_id)
                 
                 # Run 5 optimization iterations
                 for iteration in range(1, 6):  # 1 through 5

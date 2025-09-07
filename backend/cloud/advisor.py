@@ -23,19 +23,26 @@ from prompts import (
     get_optimization_prompt
 )
 
+# Import the LLM logger
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from logger import setup_llm_logger
+
 logger = logging.getLogger(__name__)
 
 
 class TrainingAdvisor:
     """AI-powered training advisor for hyperparameter optimization."""
     
-    def __init__(self, api_key: Optional[str] = None, model: str = "gpt-4-turbo-preview"):
+    def __init__(self, api_key: Optional[str] = None, model: str = "gpt-4-turbo-preview", session_id: Optional[str] = None):
         """
         Initialize the training advisor.
         
         Args:
             api_key: OpenAI API key (if None, will try to get from environment)
             model: OpenAI model to use for analysis
+            session_id: Session ID for logging purposes
         """
         if openai is None:
             raise ImportError("OpenAI package not installed. Run: pip install openai")
@@ -45,7 +52,11 @@ class TrainingAdvisor:
             raise ValueError("OpenAI API key not provided. Set OPENAI_API_KEY environment variable or pass api_key parameter.")
             
         self.model = model
+        self.session_id = session_id
         self.client = openai.OpenAI(api_key=self.api_key)
+        
+        # Setup LLM debugging logger
+        self.llm_logger = setup_llm_logger(session_id=session_id)
     
     def _extract_value(self, param_dict: Dict[str, Any]):
         """
@@ -177,6 +188,23 @@ class TrainingAdvisor:
             Parsed JSON response or None if failed
         """
         try:
+            # Log the input prompts
+            self.llm_logger.info("=" * 80)
+            self.llm_logger.info("NEW LLM API CALL")
+            self.llm_logger.info(f"Model: {self.model}")
+            self.llm_logger.info(f"Session ID: {self.session_id}")
+            self.llm_logger.info("=" * 80)
+            
+            self.llm_logger.info("SYSTEM PROMPT:")
+            self.llm_logger.info("-" * 40)
+            self.llm_logger.info(system_prompt[:1000] + "..." if len(system_prompt) > 1000 else system_prompt)
+            self.llm_logger.info("-" * 40)
+            
+            self.llm_logger.info("USER PROMPT:")
+            self.llm_logger.info("-" * 40)
+            self.llm_logger.info(user_prompt[:2000] + "..." if len(user_prompt) > 2000 else user_prompt)
+            self.llm_logger.info("-" * 40)
+            
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
@@ -190,31 +218,66 @@ class TrainingAdvisor:
             
             content = response.choices[0].message.content
             
+            # Log the raw response
+            self.llm_logger.info("RAW LLM RESPONSE:")
+            self.llm_logger.info("-" * 40)
+            self.llm_logger.info(content[:2000] + "..." if len(content) > 2000 else content)
+            self.llm_logger.info("-" * 40)
+            
+            # Log token usage if available
+            if hasattr(response, 'usage') and response.usage:
+                self.llm_logger.info("TOKEN USAGE:")
+                self.llm_logger.info(f"  Prompt tokens: {response.usage.prompt_tokens}")
+                self.llm_logger.info(f"  Completion tokens: {response.usage.completion_tokens}")
+                self.llm_logger.info(f"  Total tokens: {response.usage.total_tokens}")
+            
             # Clean up any potential malformed content before parsing
             content = content.strip()
             if content.count('{') != content.count('}'):
-                logger.error("Unbalanced braces in JSON response")
+                self.llm_logger.error("PARSING ERROR: Unbalanced braces in JSON response")
                 return None
             
             # Check for repeated patterns that might indicate malformed response
             if any(substring * 5 in content for substring in ["0.3", "0.0", "1.0", "64", "32"]):
-                logger.error("Detected repeated patterns in response, likely malformed")
-                logger.error(f"Malformed content: {content[:200]}...")
+                self.llm_logger.error("PARSING ERROR: Detected repeated patterns in response, likely malformed")
+                self.llm_logger.error(f"Malformed content: {content[:200]}...")
                 return None
             
             parsed_response = json.loads(content)
             
+            # Log the parsed response structure
+            self.llm_logger.info("PARSED RESPONSE STRUCTURE:")
+            self.llm_logger.info(f"  Top-level keys: {list(parsed_response.keys())}")
+            if isinstance(parsed_response, dict):
+                for key, value in parsed_response.items():
+                    if isinstance(value, dict):
+                        self.llm_logger.info(f"  {key} contains: {list(value.keys())}")
+                    elif isinstance(value, list):
+                        self.llm_logger.info(f"  {key} is list with {len(value)} items")
+                    else:
+                        self.llm_logger.info(f"  {key}: {type(value).__name__}")
+            
             # Validate the structure and data types
             if "optimization_recommendations" in parsed_response:
                 self._validate_optimization_response(parsed_response["optimization_recommendations"])
+                self.llm_logger.info("VALIDATION: Optimization response structure is valid")
+            
+            self.llm_logger.info("LLM API CALL COMPLETED SUCCESSFULLY")
+            self.llm_logger.info("=" * 80)
             
             return parsed_response
             
         except json.JSONDecodeError as e:
+            self.llm_logger.error(f"JSON PARSING ERROR: {str(e)}")
+            self.llm_logger.error(f"Raw response that failed to parse: {content}")
+            self.llm_logger.error("=" * 80)
             logger.error(f"Failed to parse JSON response: {str(e)}")
             logger.error(f"Raw response: {content}")
             return None
         except Exception as e:
+            self.llm_logger.error(f"LLM API CALL FAILED: {str(e)}")
+            self.llm_logger.error(f"Error type: {type(e).__name__}")
+            self.llm_logger.error("=" * 80)
             logger.error(f"OpenAI API call failed: {str(e)}")
             return None
     
