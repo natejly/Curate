@@ -828,6 +828,11 @@ async def train_logs(session_id: str):
                                     metrics_data["stage1_metrics"].append(epoch_data)
                                 else:
                                     metrics_data["stage2_metrics"].append(epoch_data)
+                                
+                                # Send metrics update every few epochs to keep frontend updated
+                                total_epochs = len(metrics_data["stage1_metrics"]) + len(metrics_data["stage2_metrics"])
+                                if total_epochs % 3 == 0:  # Send every 3 epochs to avoid overwhelming
+                                    yield f"data: {json.dumps({'type': 'metrics', 'data': metrics_data})}\n\n"
 
                             # Parse test results
                             test_results = parse_test_results(decoded_line)
@@ -847,6 +852,46 @@ async def train_logs(session_id: str):
                                     metrics_data["final_test_results"] = test_results
                                     print(f"[DEBUG] Parsed full test results: {test_results}")
 
+                                # Check if we have complete test results and are in an optimization iteration
+                                if (metrics_data["current_optimization_iteration"] > 0 and 
+                                    metrics_data.get("final_test_results") and 
+                                    len(metrics_data["final_test_results"]) >= 2 and
+                                    "loss" in metrics_data["final_test_results"] and 
+                                    "accuracy" in metrics_data["final_test_results"]):
+                                    
+                                    # Create optimization iteration entry
+                                    optimization_iteration = {
+                                        "iteration": metrics_data["current_optimization_iteration"],
+                                        "timestamp": datetime.now().isoformat(),
+                                        "test_results": metrics_data["final_test_results"].copy(),
+                                        "training_type": "optimization",
+                                        "is_optimization": True
+                                    }
+                                    
+                                    # Add to optimization iterations list
+                                    if "optimization_iterations" not in metrics_data:
+                                        metrics_data["optimization_iterations"] = []
+                                    
+                                    # Check if this iteration already exists (avoid duplicates)
+                                    existing_iteration = next((iter for iter in metrics_data["optimization_iterations"] 
+                                                             if iter["iteration"] == metrics_data["current_optimization_iteration"]), None)
+                                    
+                                    if not existing_iteration:
+                                        metrics_data["optimization_iterations"].append(optimization_iteration)
+                                        print(f"[DEBUG] Added optimization iteration {metrics_data['current_optimization_iteration']} with results: {metrics_data['final_test_results']}")
+                                    else:
+                                        # Update existing iteration with new results
+                                        existing_iteration["test_results"] = metrics_data["final_test_results"].copy()
+                                        existing_iteration["timestamp"] = datetime.now().isoformat()
+                                        print(f"[DEBUG] Updated optimization iteration {metrics_data['current_optimization_iteration']} with results: {metrics_data['final_test_results']}")
+                                    
+                                    # Sort iterations by iteration number
+                                    metrics_data["optimization_iterations"].sort(key=lambda x: x["iteration"])
+                                    
+                                    # Send updated metrics to frontend immediately
+                                    yield f"data: {json.dumps({'type': 'metrics', 'data': metrics_data})}\n\n"
+                                    print(f"[DEBUG] Sent optimization iteration {metrics_data['current_optimization_iteration']} to frontend")
+
                             # Parse stage information
                             stage_data = parse_stage_info(decoded_line)
                             if stage_data:
@@ -855,6 +900,8 @@ async def train_logs(session_id: str):
                                 elif stage_data["stage"] == "completed":
                                     metrics_data["training_status"] = "completed"
                                 metrics_data["stage_info"] = stage_data
+                                # Send metrics update when stage changes
+                                yield f"data: {json.dumps({'type': 'metrics', 'data': metrics_data})}\n\n"
 
                             # Check for training completion
                             if "TRAINING JOB COMPLETED" in formatted_line or "Training completed" in formatted_line:

@@ -91,12 +91,27 @@ export default function LiveMetrics({ sessionId, metricsData }: LiveMetricsProps
   React.useEffect(() => {
     if (!metricsData) return;
 
+    console.log('🔄 Received new metrics data:', {
+      sessionId: metricsData.session_id,
+      hasOptimizationIterations: !!metricsData.optimization_iterations,
+      optimizationIterationsCount: metricsData.optimization_iterations?.length || 0,
+      optimizationIterations: metricsData.optimization_iterations?.map(iter => ({
+        iteration: iter.iteration,
+        hasTestResults: !!iter.test_results,
+        testAccuracy: iter.test_results?.test_accuracy || iter.test_results?.accuracy,
+        testLoss: iter.test_results?.test_loss || iter.test_results?.loss
+      })) || []
+    });
+
     setIterationHistory(prev => {
       const newHistory = { ...prev };
+      let hasChanges = false;
 
       // Update original results if we have them and haven't stored them yet
       if (metricsData.final_test_results && !newHistory.originalResults) {
         newHistory.originalResults = metricsData.final_test_results;
+        hasChanges = true;
+        console.log('📊 Saved original results:', metricsData.final_test_results);
       }
 
       // Add new optimization iterations (avoid duplicates)
@@ -107,7 +122,20 @@ export default function LiveMetrics({ sessionId, metricsData }: LiveMetricsProps
           if (!existingIterationIds.has(iter.iteration)) {
             newHistory.iterations.push(iter);
             newHistory.iterations.sort((a, b) => a.iteration - b.iteration);
+            hasChanges = true;
+            console.log(`✅ Added new optimization iteration ${iter.iteration}:`, {
+              testAccuracy: iter.test_results?.test_accuracy || iter.test_results?.accuracy,
+              testLoss: iter.test_results?.test_loss || iter.test_results?.loss
+            });
           }
+        });
+      }
+
+      if (hasChanges) {
+        console.log('📈 Updated iteration history:', {
+          originalResults: !!newHistory.originalResults,
+          iterationsCount: newHistory.iterations.length,
+          iterationNumbers: newHistory.iterations.map(i => i.iteration)
         });
       }
 
@@ -291,15 +319,22 @@ export default function LiveMetrics({ sessionId, metricsData }: LiveMetricsProps
   const iterationSummaryData = createIterationSummaryData();
   
   // Debug logging to help troubleshoot the chart data
-  console.log('Iteration Summary Data:', {
+  console.log('📊 Chart Data Debug:', {
     labels: iterationSummaryData.labels,
     accuracyData: iterationSummaryData.accuracyData,
     lossData: iterationSummaryData.lossData,
     hasIterations: iterationSummaryData.hasIterations,
     preservedHistory: {
       originalResults: !!iterationHistory.originalResults,
+      originalAccuracy: iterationHistory.originalResults?.test_accuracy || iterationHistory.originalResults?.accuracy,
+      originalLoss: iterationHistory.originalResults?.test_loss || iterationHistory.originalResults?.loss,
       iterationsCount: iterationHistory.iterations.length,
-      iterationNumbers: iterationHistory.iterations.map(i => i.iteration)
+      iterationNumbers: iterationHistory.iterations.map(i => i.iteration),
+      iterationData: iterationHistory.iterations.map(iter => ({
+        iteration: iter.iteration,
+        accuracy: iter.test_results?.test_accuracy || iter.test_results?.accuracy,
+        loss: iter.test_results?.test_loss || iter.test_results?.loss
+      }))
     },
     currentOptimizationIterations: currentMetricsData?.optimization_iterations?.length || 0
   });
@@ -522,12 +557,7 @@ export default function LiveMetrics({ sessionId, metricsData }: LiveMetricsProps
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
           </svg>
-          Training Progress: Original Run vs. Optimizations
-          {iterationSummaryData.hasIterations && (
-            <span className="text-sm text-green-400 bg-green-900/30 px-2 py-1 rounded ml-2">
-              Original + {iterationHistory.iterations.length} optimizations
-            </span>
-          )}
+          Hyperparameter Tuning Iterations
         </h4>
         
         {!iterationSummaryData.hasIterations && (
@@ -566,7 +596,7 @@ export default function LiveMetrics({ sessionId, metricsData }: LiveMetricsProps
                   title: {
                     display: true,
                     text: iterationSummaryData.hasIterations 
-                      ? `Test Accuracy Progress (${iterationSummaryData.accuracyData.length} points)` 
+                      ? `Test Accuracy Progress` 
                       : 'Test Accuracy (Waiting for data...)',
                     font: {
                       size: 16,
@@ -633,7 +663,7 @@ export default function LiveMetrics({ sessionId, metricsData }: LiveMetricsProps
                   title: {
                     display: true,
                     text: iterationSummaryData.hasIterations 
-                      ? `Test Loss Progress (${iterationSummaryData.lossData.length} points)` 
+                      ? `Test Loss Progress` 
                       : 'Test Loss (Waiting for data...)',
                     font: {
                       size: 16,

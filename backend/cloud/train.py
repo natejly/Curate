@@ -82,6 +82,10 @@ def parse_args():
     parser.add_argument('--unfreeze_percent', type=float, default=0.3, 
                        help="Percentage of layers to unfreeze for fine-tuning")
     parser.add_argument('--dual_stage', action='store_true', help="Enable dual-stage training")
+    parser.add_argument('--early_stop_threshold', type=float, default=0.99, 
+                       help="Test accuracy threshold for early stopping (default: 0.99)")
+    parser.add_argument('--max_iterations', type=int, default=5,
+                       help="Maximum number of optimization iterations (default: 5)")
     # AI Advisor is now always enabled by default - removed command line arguments
     # parser.add_argument('--use_ai_advisor', action='store_true', 
     #                    help="Use AI advisor for hyperparameter optimization")
@@ -424,9 +428,13 @@ def main():
             initial_epochs=args.epochs,
             dual_stage=args.dual_stage,
             unfreeze_percent=args.unfreeze_percent,
-            custom_img_size=tuple(args.img_size) if args.img_size else None
+            custom_img_size=tuple(args.img_size) if args.img_size else None,
+            early_stop_threshold=args.early_stop_threshold,
+            max_iterations=args.max_iterations
         )
         logger.info(f"Using model: {args.base_model_name}, batch_size: {args.batch_size}, epochs: {args.epochs}, img_size: {args.img_size}")
+        logger.info(f"Early stopping threshold: {args.early_stop_threshold * 100:.1f}%")
+        logger.info(f"Max optimization iterations: {args.max_iterations}")
 
         # AI Advisor Integration
         handle_ai_advisor_workflow(args, data_parser, trainer, logger)
@@ -435,19 +443,28 @@ def main():
         logger.info("=== STARTING TRAINING ===")
         logger.info(f"Training will run for {args.epochs} epochs with batch size {args.batch_size}")
         trainer.run()
+        
+        # Check if early stopping threshold reached after initial training (using TEST accuracy)
+        if trainer.metrics and trainer.metrics.get('accuracy', 0) > args.early_stop_threshold:
+            logger.info(f"EARLY STOPPING: Test accuracy {trainer.metrics['accuracy']:.4f} exceeds {args.early_stop_threshold*100:.1f}% threshold")
+            logger.info("Skipping optimization iterations due to already high test accuracy")
+            early_stopped = True
+        else:
+            early_stopped = False
 
         
         # AI Optimization Iterations
-        if AI_ADVISOR_AVAILABLE:
+        if AI_ADVISOR_AVAILABLE and not early_stopped:
             logger.info("=== STARTING AI OPTIMIZATION ITERATIONS ===")
+            logger.info(f"Running up to {args.max_iterations} optimization iterations")
             try:
                 # Pass session_id for LLM debugging logs
                 session_id = getattr(args, 'session_id', None)
                 advisor = TrainingAdvisor(session_id=session_id)
                 
-                # Run 5 optimization iterations
-                for iteration in range(1, 6):  # 1 through 5
-                    logger.info(f"=== OPTIMIZATION ITERATION {iteration} ===")
+                # Run optimization iterations up to max_iterations
+                for iteration in range(1, args.max_iterations + 1):
+                    logger.info(f"=== OPTIMIZATION ITERATION {iteration}/{args.max_iterations} ===")
                     
                     # Set the optimization iteration number in the trainer (this will reset model to fresh state)
                     trainer.set_optimization_iteration(iteration)
@@ -458,7 +475,18 @@ def main():
                         # Run training with optimized parameters on fresh model
                         trainer.run()
                         logger.info(f"=== OPTIMIZATION {iteration} TRAINING COMPLETED ===")
+                        
+                        # Log the specific test accuracy that will be used for early stopping evaluation
+                        if trainer.metrics and 'accuracy' in trainer.metrics:
+                            logger.info(f"Test accuracy for iteration {iteration}: {trainer.metrics['accuracy']:.4f}")
+                        
                         trainer.training_log.show()
+                        
+                        # Check for early stopping after each optimization iteration using TEST accuracy
+                        if trainer.metrics and trainer.metrics.get('accuracy', 0) > args.early_stop_threshold:
+                            logger.info(f"🎯 EARLY STOPPING: Test accuracy {trainer.metrics['accuracy']:.4f} exceeds {args.early_stop_threshold*100:.1f}% threshold")
+                            logger.info(f"Stopping optimization iterations after iteration {iteration}/{args.max_iterations}")
+                            break
                     else:
                         logger.warning(f"Optimization iteration {iteration} failed, stopping optimization process")
                         break
@@ -466,6 +494,8 @@ def main():
             except Exception as opt_error:
                 logger.error(f"AI optimization failed: {str(opt_error)}")
                 logger.info("Continuing with training results obtained so far...")
+        elif early_stopped:
+            logger.info("AI optimization skipped due to early stopping threshold reached")
         else:
             logger.info("AI Advisor not available, skipping optimization iterations")
         logger.info("=== TRAINING COMPLETED ===")

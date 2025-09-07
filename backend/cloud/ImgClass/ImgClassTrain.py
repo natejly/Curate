@@ -40,7 +40,9 @@ class ImgClassTrainer:
                  fine_tune_epochs: int = 10,
                  dual_stage: bool = True,
                  custom_img_size: tuple = None,
-                 unfreeze_percent: float = 0.5):
+                 unfreeze_percent: float = 0.5,
+                 early_stop_threshold: float = 0.99,
+                 max_iterations: int = 5):
         # Data source
         self.parser = ImgClassData(dataset_path, debug=False)
         self.file_tree = self.parser.json_tree
@@ -64,6 +66,8 @@ class ImgClassTrainer:
         self.dual_stage = dual_stage
         self.custom_img_size = custom_img_size
         self.unfreeze_percent = unfreeze_percent
+        self.early_stop_threshold = early_stop_threshold
+        self.max_iterations = max_iterations
 
         # Derived
         # Use custom image size if provided, otherwise use bucketed dims
@@ -100,7 +104,9 @@ class ImgClassTrainer:
                     fine_tune_epochs: int,
                     dual_stage: bool = None,
                     custom_img_size: tuple = None,
-                    unfreeze_percent: float = None):
+                    unfreeze_percent: float = None,
+                    early_stop_threshold: float = None,
+                    max_iterations: int = None):
         
         self.base_model_name = base_model_name
         self.batch_size = batch_size
@@ -116,6 +122,10 @@ class ImgClassTrainer:
             self.IMG_SIZE = tuple(custom_img_size) if isinstance(custom_img_size, (list, tuple)) else custom_img_size
         if unfreeze_percent is not None:
             self.unfreeze_percent = unfreeze_percent
+        if early_stop_threshold is not None:
+            self.early_stop_threshold = early_stop_threshold
+        if max_iterations is not None:
+            self.max_iterations = max_iterations
 
     @staticmethod
     def get_classes_from_train(train_dir: str) -> list:
@@ -329,6 +339,22 @@ class ImgClassTrainer:
         logger.info(f"=== FINAL TEST RESULTS ===")
         for key, value in metrics.items():
             logger.info(f"Test {key}: {value}")
+        
+        # Ensure we have test accuracy for early stopping evaluation
+        if 'accuracy' in metrics:
+            logger.info(f"Test accuracy for early stopping evaluation: {metrics['accuracy']:.4f}")
+    
+    def should_stop_early(self):
+        """Check if training should stop early based on test accuracy threshold."""
+        if self.metrics and 'accuracy' in self.metrics:
+            test_accuracy = self.metrics['accuracy']  # This is TEST accuracy from evaluate()
+            if test_accuracy > self.early_stop_threshold:
+                print(f"🎯 EARLY STOPPING: Test accuracy {test_accuracy:.4f} exceeds {self.early_stop_threshold*100:.1f}% threshold")
+                import logging
+                logger = logging.getLogger()
+                logger.info(f"🎯 EARLY STOPPING: Test accuracy {test_accuracy:.4f} exceeds {self.early_stop_threshold*100:.1f}% threshold")
+                return True
+        return False
     def getHistory1(self):
         return self.history_stage1
     
@@ -348,6 +374,8 @@ class ImgClassTrainer:
             "img_size": self.IMG_SIZE,
             "custom_img_size": self.custom_img_size,
             "unfreeze_percent": self.unfreeze_percent,
+            "early_stop_threshold": self.early_stop_threshold,
+            "max_iterations": self.max_iterations,
             "dataset_name": getattr(self, 'dataset_name', None),
             "num_classes": self.NUM_CLASSES,
         }
