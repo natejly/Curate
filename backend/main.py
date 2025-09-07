@@ -17,11 +17,8 @@ aws_helper = AWSHelper("curate-sagemaker-bucket-123456789012")
 # Upload dataset to S3
 aws_helper.upload_zip("/Users/natejly/Desktop/Rice_Image_Dataset", "curate/datasets/")
 aws_helper.set_base_job_name("riceimgs")
-# Start SageMaker training with AI advisor enabled
+# Start SageMaker training with AI advisor enabled by default
 hyperparameters = {
-    'use_ai_advisor': '',  # Enable AI advisor
-    'apply_recommendations': '',  # Auto-apply recommendations
-    'save_recommendations': '',  # Save recommendations to file
     'epochs': 10,  # Override default epochs
     'batch_size': 32  # Override default batch size
 }

@@ -815,9 +815,6 @@ async def train(session_id: str):
         aws_helper.upload_zip(dataset_root, "curate/datasets/")
         aws_helper.set_base_job_name(os.path.basename(dataset_root))
         hyperparameters = {
-            'use_ai_advisor': '',
-            'apply_recommendations': '',
-            'save_recommendations': '',
             'epochs': 10,
             'batch_size': 32,
             'session_id': session_id
@@ -1265,9 +1262,6 @@ async def train_s3(zip_name: str, request: Request, session_id: Optional[str] = 
         aws_helper.s3_path = f"s3://{bucket}/{s3_key}"
         aws_helper.set_base_job_name(zip_name.replace(".zip", ""))
         hyperparameters = {
-            'use_ai_advisor': '',
-            'apply_recommendations': '',
-            'save_recommendations': '',
             'epochs': 10,
             'batch_size': 32,
             'zip_s3_path': aws_helper.s3_path,
