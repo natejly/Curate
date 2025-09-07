@@ -81,6 +81,8 @@ function TrainingConsoleContent() {
       console.log("Closing integrated stream");
       eventSource.close();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // CloudWatch logs aren't available immediately when SageMaker image is downloading
   }, [sessionId]);
 
   // Auto-scroll to bottom when new logs arrive

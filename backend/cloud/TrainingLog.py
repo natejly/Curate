@@ -47,8 +47,8 @@ class TrainingLog:
         self.log[f"iteration_{self.current_iteration}"] = entry
         self.current_iteration += 1
 
-
-    def getLog(self):
+    def get_log_data(self):
+        """Get training log data in a format suitable for AI optimization analysis."""
         return self.log
 
     def json(self, pretty=True):
