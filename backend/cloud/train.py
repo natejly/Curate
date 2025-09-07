@@ -432,8 +432,7 @@ def main():
         logger.info("=== STARTING TRAINING ===")
         logger.info(f"Training will run for {args.epochs} epochs with batch size {args.batch_size}")
         trainer.run()
-        logger.info("=== TRAINING COMPLETED ===")
-        trainer.training_log.show()
+
         
         # AI Optimization Iterations
         if AI_ADVISOR_AVAILABLE:
@@ -470,7 +469,8 @@ def main():
                 logger.info("Continuing with original training results...")
         else:
             logger.info("AI Advisor not available, skipping optimization iterations")
-        
+        logger.info("=== TRAINING COMPLETED ===")
+        trainer.training_log.show()
         # Setup model directory and save outputs
         logger.info("=== SAVING MODEL AND LOGS ===")
         model_dir = setup_model_directory(args)
