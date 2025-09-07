@@ -265,7 +265,8 @@ OPTIMIZATION_SYSTEM_PROMPT = """You are an expert machine learning engineer spec
 Analyze the provided training logs and current configuration to identify performance issues and suggest specific 
 hyperparameter adjustments to improve model performance.
 
-Your response MUST be valid JSON with this exact structure:
+CRITICAL: Your response MUST be valid JSON with this exact structure. ALL recommended_value fields MUST contain the exact data type specified:
+
 {
     "analysis": {
         "performance_assessment": "overall assessment of current training",
@@ -278,19 +279,19 @@ Your response MUST be valid JSON with this exact structure:
         "training_config": {
             "batch_size": {
                 "current_value": "current batch size",
-                "recommended_value": "new recommended batch size (integer)",
+                "recommended_value": 64,
                 "reasoning": "explanation for this change",
                 "confidence": 85
             },
             "initial_learning_rate": {
                 "current_value": "current learning rate",
-                "recommended_value": "new recommended learning rate (float)",
+                "recommended_value": 0.001,
                 "reasoning": "explanation for this change",
                 "confidence": 85
             },
             "initial_epochs": {
                 "current_value": "current epochs",
-                "recommended_value": "new recommended epochs (integer)",
+                "recommended_value": 20,
                 "reasoning": "explanation for this change",
                 "confidence": 85
             },
@@ -304,19 +305,19 @@ Your response MUST be valid JSON with this exact structure:
         "fine_tuning_config": {
             "fine_tune_learning_rate": {
                 "current_value": "current fine tune learning rate",
-                "recommended_value": "new recommended fine tune learning rate (float)",
+                "recommended_value": 0.0001,
                 "reasoning": "explanation for this change",
                 "confidence": 85
             },
             "fine_tune_epochs": {
                 "current_value": "current fine tune epochs",
-                "recommended_value": "new recommended fine tune epochs (integer)",
+                "recommended_value": 10,
                 "reasoning": "explanation for this change",
                 "confidence": 85
             },
             "unfreeze_percent": {
                 "current_value": "current unfreeze percent",
-                "recommended_value": "new recommended unfreeze percent (float 0-1)",
+                "recommended_value": 0.3,
                 "reasoning": "explanation for this change",
                 "confidence": 85
             }
@@ -324,7 +325,7 @@ Your response MUST be valid JSON with this exact structure:
         "model_architecture": {
             "base_model_name": {
                 "current_value": "current model name",
-                "recommended_value": "new recommended model name",
+                "recommended_value": "EfficientNetB1",
                 "reasoning": "explanation for this change",
                 "confidence": 85
             }
@@ -338,16 +339,21 @@ Your response MUST be valid JSON with this exact structure:
     "implementation_notes": ["specific notes about applying these changes"]
 }
 
-IMPORTANT PARAMETER GUIDELINES:
-- batch_size: Must be integer (16, 32, 64, 128, etc.)
-- initial_learning_rate: Must be float (0.001, 0.0001, etc.)
-- fine_tune_learning_rate: Must be float, typically 10x smaller than initial
-- initial_epochs: Must be integer (5-50 typical range)
-- fine_tune_epochs: Must be integer (5-30 typical range)
-- image_size: Must be array of two integers [height, width]
-- unfreeze_percent: Must be float 0.0-1.0 (0.3 = 30% of layers)
-- base_model_name: Must be valid model string in the EfficientNet family(EfficientNetB0, EfficientNetB1, etc.)
-- confidence: Integer 0-100
+IMPORTANT PARAMETER GUIDELINES - FOLLOW THESE EXACTLY:
+- batch_size: Must be integer (16, 32, 64, 128, etc.) - NO STRINGS, NO DECIMALS
+- initial_learning_rate: Must be float (0.001, 0.0001, etc.) - NO STRINGS  
+- fine_tune_learning_rate: Must be float, typically 10x smaller than initial - NO STRINGS
+- initial_epochs: Must be integer (5-50 typical range) - NO STRINGS, NO DECIMALS
+- fine_tune_epochs: Must be integer (5-30 typical range) - NO STRINGS, NO DECIMALS  
+- image_size: Must be array of exactly two integers [height, width] - NO STRINGS
+- unfreeze_percent: Must be float between 0.0-1.0 (0.3 = 30% of layers) - NO STRINGS
+- base_model_name: Must be valid string in EfficientNet family (EfficientNetB0, EfficientNetB1, etc.)
+- confidence: Must be integer 0-100 - NO STRINGS, NO DECIMALS
+
+CRITICAL: ALL recommended_value fields must contain the EXACT data type specified above.
+Do NOT put numbers in quotes. Do NOT add extra decimal points.
+Example: "recommended_value": 64 (NOT "64" or "64.0")
+Example: "recommended_value": 0.001 (NOT "0.001" or "0.30.30.30...")
 
 Only recommend changes for parameters that need optimization based on the training results."""
 

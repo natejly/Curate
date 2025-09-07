@@ -189,7 +189,26 @@ class TrainingAdvisor:
             )
             
             content = response.choices[0].message.content
-            return json.loads(content)
+            
+            # Clean up any potential malformed content before parsing
+            content = content.strip()
+            if content.count('{') != content.count('}'):
+                logger.error("Unbalanced braces in JSON response")
+                return None
+            
+            # Check for repeated patterns that might indicate malformed response
+            if any(substring * 5 in content for substring in ["0.3", "0.0", "1.0", "64", "32"]):
+                logger.error("Detected repeated patterns in response, likely malformed")
+                logger.error(f"Malformed content: {content[:200]}...")
+                return None
+            
+            parsed_response = json.loads(content)
+            
+            # Validate the structure and data types
+            if "optimization_recommendations" in parsed_response:
+                self._validate_optimization_response(parsed_response["optimization_recommendations"])
+            
+            return parsed_response
             
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse JSON response: {str(e)}")
@@ -198,6 +217,25 @@ class TrainingAdvisor:
         except Exception as e:
             logger.error(f"OpenAI API call failed: {str(e)}")
             return None
+    
+    def _validate_optimization_response(self, recommendations: Dict[str, Any]) -> None:
+        """Validate the structure and types of optimization recommendations."""
+        if "training_config" in recommendations:
+            for param, details in recommendations["training_config"].items():
+                if isinstance(details, dict) and "recommended_value" in details:
+                    value = details["recommended_value"]
+                    if param in ["batch_size", "initial_epochs", "fine_tune_epochs"]:
+                        if not isinstance(value, int):
+                            raise ValueError(f"Parameter {param} must be integer, got {type(value)}: {value}")
+                    elif param in ["initial_learning_rate", "fine_tune_learning_rate", "unfreeze_percent"]:
+                        if not isinstance(value, (int, float)):
+                            raise ValueError(f"Parameter {param} must be number, got {type(value)}: {value}")
+                    elif param == "image_size":
+                        if not isinstance(value, list) or len(value) != 2:
+                            raise ValueError(f"Parameter {param} must be list of 2 integers, got {type(value)}: {value}")
+                    elif param == "base_model_name":
+                        if not isinstance(value, str):
+                            raise ValueError(f"Parameter {param} must be string, got {type(value)}: {value}")
     
     def get_hyperparameter_recommendations(self, data_parser, trainer) -> Optional[Dict[str, Any]]:
         """
@@ -414,7 +452,7 @@ class TrainingAdvisor:
                 json.dumps(current_config, indent=2)
             )
             
-            # Get optimization recommendations from AI
+            # Get optimization recommendations from AI with enhanced validation
             recommendations = self.call_openai_api(OPTIMIZATION_SYSTEM_PROMPT, optimization_prompt)
             
             if recommendations:
@@ -422,7 +460,10 @@ class TrainingAdvisor:
                 
                 # Apply recommendations using trainer.edit_config to maintain training log updates
                 if "optimization_recommendations" in recommendations:
-                    self._apply_optimization_recommendations(trainer, recommendations["optimization_recommendations"])
+                    success = self._apply_optimization_recommendations(trainer, recommendations["optimization_recommendations"])
+                    if not success:
+                        logger.error("Failed to apply optimization recommendations")
+                        return None
                 
                 return recommendations
             else:
@@ -431,6 +472,7 @@ class TrainingAdvisor:
                 
         except Exception as e:
             logger.error(f"Failed to optimize training: {str(e)}")
+            logger.error(f"Error details: {type(e).__name__}: {str(e)}")
             return None
     
     def _apply_optimization_recommendations(self, trainer, recommendations: Dict[str, Any]) -> bool:
@@ -468,6 +510,53 @@ class TrainingAdvisor:
                         old_value = config_params.get(param)
                         new_value = details["recommended_value"]
                         
+                        # Type validation and conversion
+                        try:
+                            if param == "batch_size":
+                                new_value = int(float(str(new_value).strip()))
+                                if new_value <= 0:
+                                    logger.warning(f"Invalid batch_size {new_value}, skipping")
+                                    continue
+                            elif param == "initial_epochs":
+                                new_value = int(float(str(new_value).strip()))
+                                if new_value <= 0:
+                                    logger.warning(f"Invalid initial_epochs {new_value}, skipping")
+                                    continue
+                            elif param == "fine_tune_epochs":
+                                new_value = int(float(str(new_value).strip()))
+                                if new_value <= 0:
+                                    logger.warning(f"Invalid fine_tune_epochs {new_value}, skipping")
+                                    continue
+                            elif param == "initial_learning_rate":
+                                new_value = float(str(new_value).strip())
+                                if new_value <= 0 or new_value > 1:
+                                    logger.warning(f"Invalid initial_learning_rate {new_value}, skipping")
+                                    continue
+                            elif param == "fine_tune_learning_rate":
+                                new_value = float(str(new_value).strip())
+                                if new_value <= 0 or new_value > 1:
+                                    logger.warning(f"Invalid fine_tune_learning_rate {new_value}, skipping")
+                                    continue
+                            elif param == "unfreeze_percent":
+                                new_value = float(str(new_value).strip())
+                                if new_value < 0 or new_value > 1:
+                                    logger.warning(f"Invalid unfreeze_percent {new_value}, skipping")
+                                    continue
+                            elif param == "image_size":
+                                if isinstance(new_value, list) and len(new_value) == 2:
+                                    new_value = [int(float(str(x).strip())) for x in new_value]
+                                else:
+                                    logger.warning(f"Invalid image_size format {new_value}, skipping")
+                                    continue
+                            elif param == "base_model_name":
+                                new_value = str(new_value).strip()
+                                if not new_value.startswith("EfficientNet"):
+                                    logger.warning(f"Invalid base_model_name {new_value}, skipping")
+                                    continue
+                        except (ValueError, TypeError) as e:
+                            logger.error(f"Type conversion error for {param}: {new_value} -> {str(e)}")
+                            continue
+                        
                         # Special handling for image_size -> custom_img_size
                         if param == "image_size":
                             old_custom_img_size = config_params.get('custom_img_size')
@@ -491,6 +580,28 @@ class TrainingAdvisor:
                     if isinstance(details, dict) and "recommended_value" in details:
                         old_value = config_params.get(param)
                         new_value = details["recommended_value"]
+                        
+                        # Type validation and conversion
+                        try:
+                            if param == "fine_tune_epochs":
+                                new_value = int(float(str(new_value).strip()))
+                                if new_value <= 0:
+                                    logger.warning(f"Invalid fine_tune_epochs {new_value}, skipping")
+                                    continue
+                            elif param == "fine_tune_learning_rate":
+                                new_value = float(str(new_value).strip())
+                                if new_value <= 0 or new_value > 1:
+                                    logger.warning(f"Invalid fine_tune_learning_rate {new_value}, skipping")
+                                    continue
+                            elif param == "unfreeze_percent":
+                                new_value = float(str(new_value).strip())
+                                if new_value < 0 or new_value > 1:
+                                    logger.warning(f"Invalid unfreeze_percent {new_value}, skipping")
+                                    continue
+                        except (ValueError, TypeError) as e:
+                            logger.error(f"Type conversion error for {param}: {new_value} -> {str(e)}")
+                            continue
+                        
                         config_params[param] = new_value
                         changes_applied[param] = {
                             "old_value": old_value,
