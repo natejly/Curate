@@ -87,6 +87,58 @@ export default function LiveMetrics({ sessionId, metricsData }: LiveMetricsProps
     iterations: []
   });
 
+  // Restore session data on component mount
+  React.useEffect(() => {
+    const restoreSessionData = async () => {
+      if (!sessionId) return;
+
+      try {
+        console.log(`🔄 Attempting to restore session data for: ${sessionId}`);
+        const response = await fetch(`http://localhost:8000/session-metrics/${sessionId}`);
+        const result = await response.json();
+
+        if (result.found && result.data) {
+          console.log('✅ Session data restored successfully:', result.data);
+          
+          // Extract and restore optimization iterations if available
+          if (result.data.optimization_iterations && result.data.optimization_iterations.length > 0) {
+            const restoredIterations = result.data.optimization_iterations.map((iter: any) => ({
+              iteration: iter.iteration,
+              timestamp: iter.timestamp || new Date().toISOString(),
+              test_results: iter.test_results || {},
+              ai_recommendations: iter.ai_recommendations,
+              training_type: iter.training_type || 'optimization',
+              is_optimization: true
+            }));
+
+            setIterationHistory(prev => ({
+              ...prev,
+              originalResults: result.data.final_test_results || null,
+              iterations: restoredIterations
+            }));
+
+            console.log(`📊 Restored ${restoredIterations.length} optimization iterations from session data`);
+          }
+
+          // If we have final test results but no optimization iterations, store them as original results
+          if (result.data.final_test_results && (!result.data.optimization_iterations || result.data.optimization_iterations.length === 0)) {
+            setIterationHistory(prev => ({
+              ...prev,
+              originalResults: result.data.final_test_results
+            }));
+            console.log('📊 Restored original test results from session data');
+          }
+        } else {
+          console.log('ℹ️ No previous session data found, starting fresh');
+        }
+      } catch (error) {
+        console.error('❌ Failed to restore session data:', error);
+      }
+    };
+
+    restoreSessionData();
+  }, [sessionId]); // Run when sessionId changes
+
   // Update iteration history when new data arrives
   React.useEffect(() => {
     if (!metricsData) return;
