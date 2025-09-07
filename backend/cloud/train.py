@@ -421,9 +421,10 @@ def main():
             initial_learning_rate=args.learning_rate,
             initial_epochs=args.epochs,
             dual_stage=args.dual_stage,
-            unfreeze_percent=args.unfreeze_percent
+            unfreeze_percent=args.unfreeze_percent,
+            custom_img_size=tuple(args.img_size) if args.img_size else None
         )
-        logger.info(f"Using model: {args.base_model_name}, batch_size: {args.batch_size}, epochs: {args.epochs}")
+        logger.info(f"Using model: {args.base_model_name}, batch_size: {args.batch_size}, epochs: {args.epochs}, img_size: {args.img_size}")
 
         # AI Advisor Integration
         handle_ai_advisor_workflow(args, data_parser, trainer, logger)
@@ -440,33 +441,27 @@ def main():
             try:
                 advisor = TrainingAdvisor()
                 
-                # First optimization iteration
-                logger.info("=== OPTIMIZATION ITERATION 1 ===")
-                optimization_results_1 = advisor.optimize(trainer)
-                if optimization_results_1:
-                    logger.info("Optimization 1 recommendations applied. Running additional training...")
-                    # Run additional training with optimized parameters
-                    trainer.run()
-                    logger.info("=== OPTIMIZATION 1 TRAINING COMPLETED ===")
-                    trainer.training_log.show()
+                # Run 5 optimization iterations
+                for iteration in range(1, 6):  # 1 through 5
+                    logger.info(f"=== OPTIMIZATION ITERATION {iteration} ===")
                     
-                    # Second optimization iteration
-                    logger.info("=== OPTIMIZATION ITERATION 2 ===")
-                    optimization_results_2 = advisor.optimize(trainer)
-                    if optimization_results_2:
-                        logger.info("Optimization 2 recommendations applied. Running final training...")
-                        # Run final training with second set of optimized parameters
+                    # Set the optimization iteration number in the trainer
+                    trainer.set_optimization_iteration(iteration)
+                    
+                    optimization_results = advisor.optimize(trainer)
+                    if optimization_results:
+                        logger.info(f"Optimization {iteration} recommendations applied. Running additional training...")
+                        # Run additional training with optimized parameters
                         trainer.run()
-                        logger.info("=== OPTIMIZATION 2 TRAINING COMPLETED ===")
+                        logger.info(f"=== OPTIMIZATION {iteration} TRAINING COMPLETED ===")
                         trainer.training_log.show()
                     else:
-                        logger.warning("Second optimization iteration failed, using results from first optimization")
-                else:
-                    logger.warning("First optimization iteration failed, using original training results")
-                    
+                        logger.warning(f"Optimization iteration {iteration} failed, stopping optimization process")
+                        break
+                        
             except Exception as opt_error:
                 logger.error(f"AI optimization failed: {str(opt_error)}")
-                logger.info("Continuing with original training results...")
+                logger.info("Continuing with training results obtained so far...")
         else:
             logger.info("AI Advisor not available, skipping optimization iterations")
         logger.info("=== TRAINING COMPLETED ===")

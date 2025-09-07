@@ -49,6 +49,20 @@ interface MetricsData {
     message: string;
   };
   final_test_results?: Record<string, unknown> | null;
+  optimization_iterations?: Array<{
+    iteration: number;
+    timestamp: string;
+    test_results: Record<string, unknown>;
+    ai_recommendations?: {
+      recommendation_summary?: {
+        recommendations_applied?: number;
+        total_recommendations?: number;
+      };
+      applied_changes?: Record<string, any>;
+    };
+    training_type: string;
+    is_optimization: boolean;
+  }>;
 }
 
 interface LiveMetricsProps {
@@ -175,6 +189,60 @@ export default function LiveMetrics({ sessionId, metricsData }: LiveMetricsProps
   const allMetrics = [...currentMetricsData.stage1_metrics, ...currentMetricsData.stage2_metrics];
   const hasData = allMetrics.length > 0;
 
+  // Get current iteration metrics (only the latest training data, not cumulative)
+  const getCurrentIterationMetrics = () => {
+    // If we have optimization iterations, we want to show only the current iteration's epoch data
+    // For this, we need to determine which metrics belong to the current training
+    // Since epoch graphs should reset after each iteration, we'll show all current metrics
+    // This works because the training log creates separate entries for each iteration
+    return allMetrics;
+  };
+
+  const currentIterationMetrics = getCurrentIterationMetrics();
+
+  // Create iteration summary data for the bottom chart
+  const createIterationSummaryData = () => {
+    if (!currentMetricsData.optimization_iterations || currentMetricsData.optimization_iterations.length === 0) {
+      return null;
+    }
+
+    const iterations = currentMetricsData.optimization_iterations;
+    const labels = ['Initial', ...iterations.map(iter => `Iteration ${iter.iteration}`)];
+    
+    // Extract test accuracies and losses
+    const testAccuracies = [];
+    const testLosses = [];
+    
+    // Add initial results (from final_test_results if available)
+    if (currentMetricsData.final_test_results) {
+      const initialAcc = currentMetricsData.final_test_results.test_accuracy || 
+                         currentMetricsData.final_test_results.accuracy || 0;
+      const initialLoss = currentMetricsData.final_test_results.test_loss || 
+                          currentMetricsData.final_test_results.loss || 0;
+      testAccuracies.push(typeof initialAcc === 'number' ? initialAcc : 0);
+      testLosses.push(typeof initialLoss === 'number' ? initialLoss : 0);
+    } else {
+      testAccuracies.push(0);
+      testLosses.push(0);
+    }
+    
+    // Add optimization iteration results
+    iterations.forEach(iter => {
+      const acc = iter.test_results.test_accuracy || iter.test_results.accuracy || 0;
+      const loss = iter.test_results.test_loss || iter.test_results.loss || 0;
+      testAccuracies.push(typeof acc === 'number' ? acc : 0);
+      testLosses.push(typeof loss === 'number' ? loss : 0);
+    });
+
+    return {
+      labels,
+      accuracyData: testAccuracies,
+      lossData: testLosses
+    };
+  };
+
+  const iterationSummaryData = createIterationSummaryData();
+
   return (
     <div className="bg-black border border-white/20 rounded-lg p-6">
       <div className="mb-4 flex items-center justify-between">
@@ -202,102 +270,246 @@ export default function LiveMetrics({ sessionId, metricsData }: LiveMetricsProps
           <p>Training metrics will appear here once training begins...</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Loss Chart */}
-          <div className="h-64">
-            <Line
-              data={createChartData(allMetrics, 'Training Loss', '#ef4444', 'loss')}
-              options={{
-                ...chartOptions,
-                plugins: {
-                  ...chartOptions.plugins,
-                  title: {
-                    display: true,
-                    text: 'Loss',
-                    font: {
-                      size: 14,
-                      weight: 'bold' as const,
-                    },
-                    color: '#ffffff',
+        <div className="space-y-6">
+          {/* Current Iteration Epoch Charts */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Loss Chart */}
+            <div className="h-64">
+              <Line
+                data={createChartData(currentIterationMetrics, 'Training Loss', '#ef4444', 'loss')}
+                options={{
+                  ...chartOptions,
+                  plugins: {
+                    ...chartOptions.plugins,
+                    title: {
+                      display: true,
+                      text: 'Current Iteration - Loss',
+                      font: {
+                        size: 14,
+                        weight: 'bold' as const,
+                      },
+                      color: '#ffffff',
+                    }
                   }
-                }
-              }}
-            />
+                }}
+              />
+            </div>
+
+            {/* Accuracy Chart */}
+            <div className="h-64">
+              <Line
+                data={createChartData(currentIterationMetrics, 'Training Accuracy', '#10b981', 'accuracy')}
+                options={{
+                  ...chartOptions,
+                  plugins: {
+                    ...chartOptions.plugins,
+                    title: {
+                      display: true,
+                      text: 'Current Iteration - Accuracy',
+                      font: {
+                        size: 14,
+                        weight: 'bold' as const,
+                      },
+                      color: '#ffffff',
+                    }
+                  },
+                  scales: {
+                    ...chartOptions.scales,
+                    y: { ...chartOptions.scales.y, max: 1 }
+                  }
+                }}
+              />
+            </div>
+
+            {/* Validation Loss Chart */}
+            <div className="h-64">
+              <Line
+                data={createChartData(currentIterationMetrics, 'Validation Loss', '#f59e0b', 'val_loss')}
+                options={{
+                  ...chartOptions,
+                  plugins: {
+                    ...chartOptions.plugins,
+                    title: {
+                      display: true,
+                      text: 'Current Iteration - Validation Loss',
+                      font: {
+                        size: 14,
+                        weight: 'bold' as const,
+                      },
+                      color: '#ffffff',
+                    }
+                  }
+                }}
+              />
+            </div>
+
+            {/* Validation Accuracy Chart */}
+            <div className="h-64">
+              <Line
+                data={createChartData(currentIterationMetrics, 'Validation Accuracy', '#3b82f6', 'val_accuracy')}
+                options={{
+                  ...chartOptions,
+                  plugins: {
+                    ...chartOptions.plugins,
+                    title: {
+                      display: true,
+                      text: 'Current Iteration - Validation Accuracy',
+                      font: {
+                        size: 14,
+                        weight: 'bold' as const,
+                      },
+                      color: '#ffffff',
+                    }
+                  },
+                  scales: {
+                    ...chartOptions.scales,
+                    y: { ...chartOptions.scales.y, max: 1 }
+                  }
+                }}
+              />
+            </div>
           </div>
 
-          {/* Accuracy Chart */}
-          <div className="h-64">
-            <Line
-              data={createChartData(allMetrics, 'Training Accuracy', '#10b981', 'accuracy')}
-              options={{
-                ...chartOptions,
-                plugins: {
-                  ...chartOptions.plugins,
-                  title: {
-                    display: true,
-                    text: 'Accuracy',
-                    font: {
-                      size: 14,
-                      weight: 'bold' as const,
-                    },
-                    color: '#ffffff',
-                  }
-                },
-                scales: {
-                  ...chartOptions.scales,
-                  y: { ...chartOptions.scales.y, max: 1 }
-                }
-              }}
-            />
-          </div>
+          {/* Iteration Summary Chart - Large bottom chart */}
+          {iterationSummaryData && (
+            <div className="mt-8">
+              <h4 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
+                Optimization Progress Across Iterations
+              </h4>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Test Accuracy Across Iterations */}
+                <div className="h-80 bg-gray-900/50 border border-gray-700 rounded-lg p-4">
+                  <Line
+                    data={{
+                      labels: iterationSummaryData.labels,
+                      datasets: [{
+                        label: 'Test Accuracy',
+                        data: iterationSummaryData.accuracyData,
+                        borderColor: '#10b981',
+                        backgroundColor: '#10b98120',
+                        tension: 0.1,
+                        fill: false,
+                        pointRadius: 6,
+                        pointHoverRadius: 8,
+                        pointBackgroundColor: '#10b981',
+                        pointBorderColor: '#ffffff',
+                        pointBorderWidth: 2,
+                      }]
+                    }}
+                    options={{
+                      responsive: true,
+                      maintainAspectRatio: false,
+                      plugins: {
+                        legend: {
+                          display: false,
+                        },
+                        title: {
+                          display: true,
+                          text: 'Test Accuracy Across Iterations',
+                          font: {
+                            size: 16,
+                            weight: 'bold' as const,
+                          },
+                          color: '#ffffff',
+                        },
+                      },
+                      scales: {
+                        x: {
+                          ticks: {
+                            color: '#ffffff',
+                          },
+                          grid: {
+                            color: '#374151',
+                          },
+                        },
+                        y: {
+                          beginAtZero: true,
+                          max: 1,
+                          ticks: {
+                            color: '#ffffff',
+                            callback: function(value) {
+                              return (Number(value) * 100).toFixed(1) + '%';
+                            }
+                          },
+                          grid: {
+                            color: '#374151',
+                          },
+                        }
+                      },
+                      animation: {
+                        duration: 500,
+                      },
+                    }}
+                  />
+                </div>
 
-          {/* Validation Loss Chart */}
-          <div className="h-64">
-            <Line
-              data={createChartData(allMetrics, 'Validation Loss', '#f59e0b', 'val_loss')}
-              options={{
-                ...chartOptions,
-                plugins: {
-                  ...chartOptions.plugins,
-                  title: {
-                    display: true,
-                    text: 'Validation Loss',
-                    font: {
-                      size: 14,
-                      weight: 'bold' as const,
-                    },
-                    color: '#ffffff',
-                  }
-                }
-              }}
-            />
-          </div>
-
-          {/* Validation Accuracy Chart */}
-          <div className="h-64">
-            <Line
-              data={createChartData(allMetrics, 'Validation Accuracy', '#3b82f6', 'val_accuracy')}
-              options={{
-                ...chartOptions,
-                plugins: {
-                  ...chartOptions.plugins,
-                  title: {
-                    display: true,
-                    text: 'Validation Accuracy',
-                    font: {
-                      size: 14,
-                      weight: 'bold' as const,
-                    },
-                    color: '#ffffff',
-                  }
-                },
-                scales: {
-                  ...chartOptions.scales,
-                  y: { ...chartOptions.scales.y, max: 1 }
-                }
-              }}
-            />
-          </div>
+                {/* Test Loss Across Iterations */}
+                <div className="h-80 bg-gray-900/50 border border-gray-700 rounded-lg p-4">
+                  <Line
+                    data={{
+                      labels: iterationSummaryData.labels,
+                      datasets: [{
+                        label: 'Test Loss',
+                        data: iterationSummaryData.lossData,
+                        borderColor: '#ef4444',
+                        backgroundColor: '#ef444420',
+                        tension: 0.1,
+                        fill: false,
+                        pointRadius: 6,
+                        pointHoverRadius: 8,
+                        pointBackgroundColor: '#ef4444',
+                        pointBorderColor: '#ffffff',
+                        pointBorderWidth: 2,
+                      }]
+                    }}
+                    options={{
+                      responsive: true,
+                      maintainAspectRatio: false,
+                      plugins: {
+                        legend: {
+                          display: false,
+                        },
+                        title: {
+                          display: true,
+                          text: 'Test Loss Across Iterations',
+                          font: {
+                            size: 16,
+                            weight: 'bold' as const,
+                          },
+                          color: '#ffffff',
+                        },
+                      },
+                      scales: {
+                        x: {
+                          ticks: {
+                            color: '#ffffff',
+                          },
+                          grid: {
+                            color: '#374151',
+                          },
+                        },
+                        y: {
+                          beginAtZero: true,
+                          ticks: {
+                            color: '#ffffff',
+                          },
+                          grid: {
+                            color: '#374151',
+                          },
+                        }
+                      },
+                      animation: {
+                        duration: 500,
+                      },
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -307,16 +519,16 @@ export default function LiveMetrics({ sessionId, metricsData }: LiveMetricsProps
           <h4 className="text-white font-semibold mb-2">Latest Training Metrics</h4>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
             <div className="text-gray-300">
-              <span className="text-gray-500">Epoch:</span> {allMetrics[allMetrics.length - 1]?.epoch}
+              <span className="text-gray-500">Epoch:</span> {currentIterationMetrics[currentIterationMetrics.length - 1]?.epoch}
             </div>
             <div className="text-gray-300">
-              <span className="text-gray-500">Loss:</span> {allMetrics[allMetrics.length - 1]?.loss.toFixed(4)}
+              <span className="text-gray-500">Loss:</span> {currentIterationMetrics[currentIterationMetrics.length - 1]?.loss.toFixed(4)}
             </div>
             <div className="text-gray-300">
-              <span className="text-gray-500">Accuracy:</span> {(allMetrics[allMetrics.length - 1]?.accuracy * 100).toFixed(2)}%
+              <span className="text-gray-500">Accuracy:</span> {(currentIterationMetrics[currentIterationMetrics.length - 1]?.accuracy * 100).toFixed(2)}%
             </div>
             <div className="text-gray-300">
-              <span className="text-gray-500">Val Acc:</span> {(allMetrics[allMetrics.length - 1]?.val_accuracy * 100).toFixed(2)}%
+              <span className="text-gray-500">Val Acc:</span> {(currentIterationMetrics[currentIterationMetrics.length - 1]?.val_accuracy * 100).toFixed(2)}%
             </div>
           </div>
         </div>
@@ -344,12 +556,85 @@ export default function LiveMetrics({ sessionId, metricsData }: LiveMetricsProps
               </div>
             ))}
           </div>
-                      <div className="mt-3 flex items-center justify-between">
+          <div className="mt-3 flex items-center justify-between">
             <div className="text-xs text-green-500">
               These results show the model&apos;s performance on the held-out test dataset
             </div>
             <div className="flex gap-2">
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* AI Optimization Iterations */}
+      {currentMetricsData.optimization_iterations && currentMetricsData.optimization_iterations.length > 0 && (
+        <div className="mt-6">
+          <h4 className="text-blue-400 font-semibold mb-4 flex items-center gap-2">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+            AI Optimization Iterations
+          </h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {currentMetricsData.optimization_iterations.map((iteration, index) => (
+              <div key={index} className="p-4 bg-blue-900/20 border border-blue-500/30 rounded-lg">
+                <div className="flex items-center justify-between mb-3">
+                  <h5 className="text-blue-300 font-medium">
+                    Optimization {iteration.iteration}
+                  </h5>
+                  <span className="text-xs text-blue-400 bg-blue-900/30 px-2 py-1 rounded">
+                    {iteration.training_type}
+                  </span>
+                </div>
+                
+                {/* Test Results */}
+                <div className="mb-3">
+                  <div className="text-sm text-blue-400 mb-2">Performance:</div>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    {Object.entries(iteration.test_results).map(([key, value]) => (
+                      <div key={key} className="text-blue-200">
+                        <span className="text-blue-400 capitalize">{key.replace('_', ' ')}:</span>
+                        {typeof value === 'number' && key.toLowerCase().includes('acc')
+                          ? ` ${(value * 100).toFixed(1)}%`
+                          : typeof value === 'number'
+                            ? ` ${value.toFixed(3)}`
+                            : ` ${value}`
+                        }
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* AI Recommendations Applied */}
+                {iteration.ai_recommendations && (
+                  <div className="mb-3">
+                    <div className="text-sm text-blue-400 mb-2">AI Changes:</div>
+                    <div className="text-xs text-blue-300">
+                      Applied {iteration.ai_recommendations.recommendation_summary?.recommendations_applied || 0} of{' '}
+                      {iteration.ai_recommendations.recommendation_summary?.total_recommendations || 0} recommendations
+                    </div>
+                    {iteration.ai_recommendations.applied_changes && 
+                     Object.keys(iteration.ai_recommendations.applied_changes).length > 0 && (
+                      <div className="mt-2">
+                        <div className="text-xs text-blue-400 mb-1">Key Changes:</div>
+                        <div className="space-y-1">
+                          {Object.entries(iteration.ai_recommendations.applied_changes).slice(0, 3).map(([param, change]: [string, any]) => (
+                            <div key={param} className="text-xs text-blue-200">
+                              <span className="text-blue-400">{param}:</span> {change.original} → {change.applied}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Timestamp */}
+                <div className="text-xs text-blue-500 border-t border-blue-500/20 pt-2">
+                  {new Date(iteration.timestamp).toLocaleTimeString()}
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}

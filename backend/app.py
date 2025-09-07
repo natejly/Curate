@@ -610,6 +610,94 @@ async def train_logs(session_id: str):
 
     region = _os.environ.get('AWS_REGION') or _os.environ.get('AWS_DEFAULT_REGION') or 'us-east-1'
 
+    def extract_optimization_iterations(session_id: str):
+        """Extract optimization iterations from training log if available."""
+        import os
+        from pathlib import Path
+        import boto3
+        from botocore.exceptions import ClientError
+        
+        try:
+            # Try to find training log locally first
+            backend_dir = Path(__file__).parent
+            curate_dir = backend_dir.parent
+            possible_paths = [
+                curate_dir / "logs" / session_id / "training_log.json",
+                curate_dir / "models" / session_id / "training_log.json",
+                Path("/opt/ml/model") / "training_log.json"  # SageMaker model directory
+            ]
+            
+            training_log_data = None
+            
+            # Check local paths
+            for path in possible_paths:
+                if path.exists():
+                    try:
+                        with open(path, 'r', encoding='utf-8') as f:
+                            training_log_data = json.loads(f.read())
+                        print(f"[DEBUG] Found training log locally: {path}")
+                        break
+                    except Exception as e:
+                        print(f"[DEBUG] Failed to read local training log {path}: {e}")
+                        continue
+            
+            # If not found locally, try S3
+            if not training_log_data:
+                try:
+                    s3_client = boto3.client('s3')
+                    bucket_name = "curate-sagemaker-bucket-123456789012"
+                    training_log_key = f"curate/logs/{session_id}/training_log.json"
+                    
+                    response = s3_client.get_object(Bucket=bucket_name, Key=training_log_key)
+                    log_content = response['Body'].read().decode('utf-8')
+                    training_log_data = json.loads(log_content)
+                    print(f"[DEBUG] Found training log in S3: {training_log_key}")
+                except ClientError as e:
+                    if e.response['Error']['Code'] != 'NoSuchKey':
+                        print(f"[DEBUG] S3 error accessing training log: {e}")
+                except Exception as e:
+                    print(f"[DEBUG] Error accessing S3 training log: {e}")
+            
+            # Extract optimization iterations from training log
+            optimization_iterations = []
+            if training_log_data and isinstance(training_log_data, dict):
+                for iteration_key, iteration_data in training_log_data.items():
+                    if (isinstance(iteration_data, dict) and 
+                        iteration_data.get('is_optimization') and 
+                        iteration_data.get('optimization_iteration')):
+                        
+                        # Extract test results
+                        test_results = {}
+                        if 'test' in iteration_data:
+                            test_results = iteration_data['test']
+                        elif 'test_metrics' in iteration_data:
+                            test_results = iteration_data['test_metrics']
+                        
+                        # Create optimization iteration entry
+                        opt_iteration = {
+                            'iteration': iteration_data['optimization_iteration'],
+                            'timestamp': iteration_data.get('timestamp', ''),
+                            'test_results': test_results,
+                            'training_type': iteration_data.get('training_type', 'unknown'),
+                            'is_optimization': True
+                        }
+                        
+                        # Add AI recommendations if available
+                        if 'ai_advisor' in iteration_data:
+                            opt_iteration['ai_recommendations'] = iteration_data['ai_advisor']
+                        
+                        optimization_iterations.append(opt_iteration)
+                
+                # Sort by iteration number
+                optimization_iterations.sort(key=lambda x: x['iteration'])
+                print(f"[DEBUG] Extracted {len(optimization_iterations)} optimization iterations")
+            
+            return optimization_iterations
+            
+        except Exception as e:
+            print(f"[DEBUG] Error extracting optimization iterations: {e}")
+            return []
+
     async def log_stream():
         print(f"[DEBUG] Starting integrated log and metrics stream for session: {session_id} in {region}")
 
@@ -621,7 +709,9 @@ async def train_logs(session_id: str):
             "current_stage": 1,
             "training_status": "initializing",
             "stage_info": None,
-            "final_test_results": None
+            "final_test_results": None,
+            "optimization_iterations": [],
+            "current_optimization_iteration": 0  # Track current optimization iteration
         }
 
         # Keep waiting and retrying indefinitely until logs appear or training finishes
@@ -656,6 +746,8 @@ async def train_logs(session_id: str):
                 heartbeat_interval = 60  # Send heartbeat every 60 seconds for long training
                 last_metrics_update = asyncio.get_event_loop().time()
                 metrics_update_interval = 2  # Send metrics every 2 seconds
+                last_optimization_check = asyncio.get_event_loop().time()
+                optimization_check_interval = 10  # Check for optimization iterations every 10 seconds
 
                 while True:
                     # Check if we need to send a heartbeat
@@ -663,6 +755,19 @@ async def train_logs(session_id: str):
                     if current_time - last_heartbeat > heartbeat_interval:
                         yield f"data: {json.dumps({'type': 'log', 'message': f'[HEARTBEAT] Training in progress for {session_id}...'})}\n\n"
                         last_heartbeat = current_time
+
+                    # Check for optimization iterations periodically
+                    if current_time - last_optimization_check > optimization_check_interval:
+                        try:
+                            optimization_iterations = extract_optimization_iterations(session_id)
+                            if optimization_iterations and len(optimization_iterations) != len(metrics_data["optimization_iterations"]):
+                                metrics_data["optimization_iterations"] = optimization_iterations
+                                print(f"[DEBUG] Updated optimization iterations: {len(optimization_iterations)} found")
+                                # Send updated metrics
+                                yield f"data: {json.dumps({'type': 'metrics', 'data': metrics_data})}\n\n"
+                        except Exception as e:
+                            print(f"[DEBUG] Error checking optimization iterations: {e}")
+                        last_optimization_check = current_time
 
                     # Send metrics update if needed
                     if current_time - last_metrics_update > metrics_update_interval:
@@ -701,6 +806,21 @@ async def train_logs(session_id: str):
                         formatted_line = format_log_line(decoded_line)
 
                         if formatted_line:  # Only send if we successfully parsed it
+                            # Check for optimization iteration start to reset epoch metrics
+                            if "=== OPTIMIZATION ITERATION" in decoded_line:
+                                # Extract iteration number
+                                import re
+                                iteration_match = re.search(r'OPTIMIZATION ITERATION (\d+)', decoded_line)
+                                if iteration_match:
+                                    new_iteration = int(iteration_match.group(1))
+                                    if new_iteration > metrics_data["current_optimization_iteration"]:
+                                        print(f"[DEBUG] Starting optimization iteration {new_iteration}, resetting epoch metrics")
+                                        metrics_data["current_optimization_iteration"] = new_iteration
+                                        # Reset epoch metrics for new iteration
+                                        metrics_data["stage1_metrics"] = []
+                                        metrics_data["stage2_metrics"] = []
+                                        metrics_data["current_stage"] = 1
+                            
                             # Parse metrics from the log line
                             epoch_data = parse_epoch_metrics(decoded_line)
                             if epoch_data:
@@ -741,6 +861,14 @@ async def train_logs(session_id: str):
                                 training_finished = True
                                 yield f"data: {json.dumps({'type': 'log', 'message': f'🎉 {formatted_line}'})}\n\n"
                                 yield f"data: {json.dumps({'type': 'log', 'message': f'Training completed for session {session_id}'})}\n\n"
+                                # Get final optimization iterations before sending final metrics
+                                try:
+                                    final_optimization_iterations = extract_optimization_iterations(session_id)
+                                    if final_optimization_iterations:
+                                        metrics_data["optimization_iterations"] = final_optimization_iterations
+                                        print(f"[DEBUG] Final optimization iterations: {len(final_optimization_iterations)} found")
+                                except Exception as e:
+                                    print(f"[DEBUG] Error getting final optimization iterations: {e}")
                                 # Send final metrics
                                 yield f"data: {json.dumps({'type': 'metrics', 'data': metrics_data})}\n\n"
                                 return  # End the stream

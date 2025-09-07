@@ -90,6 +90,7 @@ class ImgClassTrainer:
         # Training log integration
         self.training_log = TrainingLog()
         self.ai_recommendations = None  # Store AI recommendations for logging
+        self.current_optimization_iteration = None  # Track optimization iterations
         
     def edit_config(self, base_model_name: str, 
                     batch_size: int, 
@@ -421,6 +422,21 @@ class ImgClassTrainer:
         self.ai_recommendations = recommendations
         print(f"AI recommendations stored for training log")
     
+    def set_optimization_iteration(self, iteration_number):
+        """Set the current optimization iteration number and reset training history."""
+        self.current_optimization_iteration = iteration_number
+        print(f"Set optimization iteration to: {iteration_number}")
+        
+        # Reset training history for new iteration (epoch graphs will start fresh)
+        if iteration_number > 1:  # Don't reset for the first optimization iteration
+            self.reset_training_history()
+    
+    def reset_training_history(self):
+        """Reset training history for a new optimization iteration."""
+        self.history_stage1 = None
+        self.history_stage2 = None
+        print("Training history reset for new optimization iteration")
+    
     def log_training_results(self):
         """Log training results based on dual_stage flag."""
         if self.dual_stage and self.history_stage1 and self.history_stage2:
@@ -430,7 +446,8 @@ class ImgClassTrainer:
                 stage1_logs=self.history_stage1,
                 stage2_logs=self.history_stage2,
                 test_metrics=self.metrics,
-                ai_recommendations=self.ai_recommendations
+                ai_recommendations=self.ai_recommendations,
+                optimization_iteration=self.current_optimization_iteration
             )
             print("Two-stage training results logged.")
         elif self.history_stage1:
@@ -439,7 +456,8 @@ class ImgClassTrainer:
                 params=self.getParams(),
                 logs=self.history_stage1,
                 test=self.metrics,
-                ai_recommendations=self.ai_recommendations
+                ai_recommendations=self.ai_recommendations,
+                optimization_iteration=self.current_optimization_iteration
             )
             print("Single-stage training results logged.")
         else:

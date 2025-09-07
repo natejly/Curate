@@ -11,7 +11,7 @@ class TrainingLog:
         self.log = {}
         self.current_iteration = 1
 
-    def addEntry(self, params, logs, test, ai_recommendations=None):
+    def addEntry(self, params, logs, test, ai_recommendations=None, optimization_iteration=None):
         """Legacy method for backward compatibility - assumes single stage training."""
         # create a new entry dict for the current iteration
         entry = {
@@ -26,10 +26,17 @@ class TrainingLog:
         if ai_recommendations:
             entry["ai_advisor"] = ai_recommendations
             
+        # Add optimization iteration info if provided
+        if optimization_iteration is not None:
+            entry["optimization_iteration"] = optimization_iteration
+            entry["is_optimization"] = True
+        else:
+            entry["is_optimization"] = False
+            
         self.log[f"iteration_{self.current_iteration}"] = entry
         self.current_iteration += 1
 
-    def addTwoStageEntry(self, params, stage1_logs, stage2_logs, test_metrics, ai_recommendations=None):
+    def addTwoStageEntry(self, params, stage1_logs, stage2_logs, test_metrics, ai_recommendations=None, optimization_iteration=None):
         """Add entry for two-stage training with separate logs for each stage."""
         entry = {
             "params": params,
@@ -43,6 +50,13 @@ class TrainingLog:
         # Add AI recommendations if provided
         if ai_recommendations:
             entry["ai_advisor"] = ai_recommendations
+            
+        # Add optimization iteration info if provided
+        if optimization_iteration is not None:
+            entry["optimization_iteration"] = optimization_iteration
+            entry["is_optimization"] = True
+        else:
+            entry["is_optimization"] = False
             
         self.log[f"iteration_{self.current_iteration}"] = entry
         self.current_iteration += 1

@@ -470,9 +470,10 @@ class TrainingAdvisor:
                         
                         # Special handling for image_size -> custom_img_size
                         if param == "image_size":
+                            old_custom_img_size = config_params.get('custom_img_size')
                             config_params['custom_img_size'] = tuple(new_value) if isinstance(new_value, list) else new_value
                             changes_applied['custom_img_size'] = {
-                                "old_value": old_value,
+                                "old_value": old_custom_img_size,
                                 "new_value": new_value,
                                 "reasoning": details.get("reasoning", "N/A")
                             }
