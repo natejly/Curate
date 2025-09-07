@@ -49,7 +49,20 @@ class TrainingLog:
 
     def get_log_data(self):
         """Get training log data in a format suitable for AI optimization analysis."""
-        return self.log
+        # Convert any non-JSON serializable types to JSON-compatible types
+        def convert_value(obj):
+            if hasattr(obj, 'item'):  # numpy types
+                return obj.item()
+            elif hasattr(obj, 'numpy'):  # tensorflow types
+                return obj.numpy().item()
+            elif isinstance(obj, dict):
+                return {k: convert_value(v) for k, v in obj.items()}
+            elif isinstance(obj, (list, tuple)):
+                return [convert_value(item) for item in obj]
+            else:
+                return obj
+        
+        return convert_value(self.log)
 
     def json(self, pretty=True):
         # Convert any non-JSON serializable types to JSON-compatible types
