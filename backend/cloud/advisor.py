@@ -475,12 +475,6 @@ class TrainingAdvisor:
                     trainer.base_model_name = model_config["recommended_model"]
                     logger.info(f"Updated base_model_name to: {trainer.base_model_name}")
             
-            # Apply dual-stage recommendation
-            if "analysis" in recommendations and "recommended_approach" in recommendations["analysis"]:
-                approach = recommendations["analysis"]["recommended_approach"]
-                trainer.dual_stage = (approach == "dual_stage")
-                logger.info(f"Updated dual_stage to: {trainer.dual_stage}")
-            
             return True
             
         except Exception as e:
@@ -566,6 +560,27 @@ class TrainingAdvisor:
             config_params['custom_img_size'] = trainer.custom_img_size
             config_params['unfreeze_percent'] = trainer.unfreeze_percent
             
+            # Update with recommendations from training_strategy
+            if "training_strategy" in recommendations:
+                for param, details in recommendations["training_strategy"].items():
+                    if isinstance(details, dict) and "recommended_value" in details:
+                        old_value = config_params.get(param)
+                        new_value = details["recommended_value"]
+                        
+                        # Type validation and conversion
+                        try:
+                            if param == "dual_stage":
+                                new_value = bool(new_value)
+                                config_params['dual_stage'] = new_value
+                                changes_applied[param] = {
+                                    "old_value": old_value,
+                                    "new_value": new_value,
+                                    "reasoning": details.get("reasoning", "N/A")
+                                }
+                        except (ValueError, TypeError) as e:
+                            logger.error(f"Type conversion error for {param}: {new_value} -> {str(e)}")
+                            continue
+
             # Update with recommendations from training_config
             if "training_config" in recommendations:
                 for param, details in recommendations["training_config"].items():
@@ -686,6 +701,19 @@ class TrainingAdvisor:
                                 "new_value": new_value,
                                 "reasoning": details.get("reasoning", "N/A")
                             }
+            
+            # Handle recommendations from analysis section (dual_stage from recommended_approach)
+            if "analysis" in recommendations and "recommended_approach" in recommendations["analysis"]:
+                approach = recommendations["analysis"]["recommended_approach"]
+                old_dual_stage = config_params.get('dual_stage')
+                new_dual_stage = (approach == "dual_stage")
+                if old_dual_stage != new_dual_stage:
+                    config_params['dual_stage'] = new_dual_stage
+                    changes_applied['dual_stage'] = {
+                        "old_value": old_dual_stage,
+                        "new_value": new_dual_stage,
+                        "reasoning": f"AI recommended {approach} training approach based on analysis"
+                    }
             
             # Apply all changes at once using edit_config
             if changes_applied and hasattr(trainer, 'edit_config'):

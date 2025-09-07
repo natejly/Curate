@@ -71,6 +71,50 @@ interface LiveMetricsProps {
 }
 
 export default function LiveMetrics({ sessionId, metricsData }: LiveMetricsProps) {
+  // State to preserve iteration history and prevent resets
+  const [iterationHistory, setIterationHistory] = React.useState<{
+    originalResults: any;
+    iterations: Array<{
+      iteration: number;
+      timestamp: string;
+      test_results: Record<string, unknown>;
+      ai_recommendations?: any;
+      training_type: string;
+      is_optimization: boolean;
+    }>;
+  }>({
+    originalResults: null,
+    iterations: []
+  });
+
+  // Update iteration history when new data arrives
+  React.useEffect(() => {
+    if (!metricsData) return;
+
+    setIterationHistory(prev => {
+      const newHistory = { ...prev };
+
+      // Update original results if we have them and haven't stored them yet
+      if (metricsData.final_test_results && !newHistory.originalResults) {
+        newHistory.originalResults = metricsData.final_test_results;
+      }
+
+      // Add new optimization iterations (avoid duplicates)
+      if (metricsData.optimization_iterations) {
+        const existingIterationIds = new Set(newHistory.iterations.map(iter => iter.iteration));
+        
+        metricsData.optimization_iterations.forEach(iter => {
+          if (!existingIterationIds.has(iter.iteration)) {
+            newHistory.iterations.push(iter);
+            newHistory.iterations.sort((a, b) => a.iteration - b.iteration);
+          }
+        });
+      }
+
+      return newHistory;
+    });
+  }, [metricsData]);
+
   // Determine connection status based on metrics data
   const getConnectionStatus = () => {
     if (!metricsData) return 'connecting';
@@ -206,23 +250,21 @@ export default function LiveMetrics({ sessionId, metricsData }: LiveMetricsProps
     const testAccuracies = [];
     const testLosses = [];
     
+    // Use preserved iteration history to maintain state across updates
     // Add original training run results (the baseline before any optimization)
-    if (currentMetricsData.final_test_results) {
+    if (iterationHistory.originalResults) {
       labels.push('Original Run');
-      const originalAcc = currentMetricsData.final_test_results.test_accuracy || 
-                          currentMetricsData.final_test_results.accuracy || 0;
-      const originalLoss = currentMetricsData.final_test_results.test_loss || 
-                           currentMetricsData.final_test_results.loss || 0;
+      const originalAcc = iterationHistory.originalResults.test_accuracy || 
+                          iterationHistory.originalResults.accuracy || 0;
+      const originalLoss = iterationHistory.originalResults.test_loss || 
+                           iterationHistory.originalResults.loss || 0;
       testAccuracies.push(typeof originalAcc === 'number' ? originalAcc : 0);
       testLosses.push(typeof originalLoss === 'number' ? originalLoss : 0);
     }
     
-    // Add optimization iteration results (live updates) - these should be cumulative/progressive
-    if (currentMetricsData.optimization_iterations && currentMetricsData.optimization_iterations.length > 0) {
-      // Sort iterations by iteration number to ensure proper order
-      const sortedIterations = [...currentMetricsData.optimization_iterations].sort((a, b) => a.iteration - b.iteration);
-      
-      sortedIterations.forEach(iter => {
+    // Add optimization iteration results from preserved history
+    if (iterationHistory.iterations.length > 0) {
+      iterationHistory.iterations.forEach(iter => {
         labels.push(`Iteration ${iter.iteration}`);
         const acc = iter.test_results.test_accuracy || iter.test_results.accuracy || 0;
         const loss = iter.test_results.test_loss || iter.test_results.loss || 0;
@@ -242,7 +284,7 @@ export default function LiveMetrics({ sessionId, metricsData }: LiveMetricsProps
       labels,
       accuracyData: testAccuracies,
       lossData: testLosses,
-      hasIterations: currentMetricsData.optimization_iterations && currentMetricsData.optimization_iterations.length > 0
+      hasIterations: iterationHistory.iterations.length > 0
     };
   };
 
@@ -254,7 +296,12 @@ export default function LiveMetrics({ sessionId, metricsData }: LiveMetricsProps
     accuracyData: iterationSummaryData.accuracyData,
     lossData: iterationSummaryData.lossData,
     hasIterations: iterationSummaryData.hasIterations,
-    optimizationIterations: currentMetricsData.optimization_iterations?.length || 0
+    preservedHistory: {
+      originalResults: !!iterationHistory.originalResults,
+      iterationsCount: iterationHistory.iterations.length,
+      iterationNumbers: iterationHistory.iterations.map(i => i.iteration)
+    },
+    currentOptimizationIterations: currentMetricsData?.optimization_iterations?.length || 0
   });
 
   return (
@@ -397,7 +444,7 @@ export default function LiveMetrics({ sessionId, metricsData }: LiveMetricsProps
       )}
 
       {/* AI Optimization Iterations */}
-      {currentMetricsData.optimization_iterations && currentMetricsData.optimization_iterations.length > 0 && (
+      {iterationHistory.iterations.length > 0 && (
         <div className="mt-6">
           <h4 className="text-blue-400 font-semibold mb-4 flex items-center gap-2">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -406,7 +453,7 @@ export default function LiveMetrics({ sessionId, metricsData }: LiveMetricsProps
             AI Optimization Iterations
           </h4>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {currentMetricsData.optimization_iterations.map((iteration, index) => (
+            {iterationHistory.iterations.map((iteration, index) => (
               <div key={index} className="p-4 bg-blue-900/20 border border-blue-500/30 rounded-lg">
                 <div className="flex items-center justify-between mb-3">
                   <h5 className="text-blue-300 font-medium">
@@ -478,7 +525,7 @@ export default function LiveMetrics({ sessionId, metricsData }: LiveMetricsProps
           Training Progress: Original Run vs. Optimizations
           {iterationSummaryData.hasIterations && (
             <span className="text-sm text-green-400 bg-green-900/30 px-2 py-1 rounded ml-2">
-              Original + {currentMetricsData.optimization_iterations?.length || 0} optimizations
+              Original + {iterationHistory.iterations.length} optimizations
             </span>
           )}
         </h4>

@@ -34,6 +34,13 @@ Requirements:
 3. Optimize for AWS SageMaker constraints and best practices
 4. Provide reasoning for each recommendation
 5. Include confidence scores (0-100) for each recommendation
+6. Choose between single-stage or dual-stage training approach
+
+TRAINING APPROACHES EXPLAINED:
+- **Single-stage training**: Trains the entire model from the start with unfrozen layers. Good for larger datasets where you want immediate feature adaptation.
+- **Dual-stage training**: First trains only the top layers (feature extractor frozen), then unfreezes a percentage of layers for fine-tuning. Better for smaller datasets or when transfer learning benefits are important.
+
+Current dual_stage setting: The model will use the approach you recommend in "analysis.recommended_approach".
 
 IMPORTANT:
 1. Use exactly the key "value" (not "recommended_value" or any other variant) for all parameter values.
@@ -265,6 +272,12 @@ OPTIMIZATION_SYSTEM_PROMPT = """You are an expert machine learning engineer spec
 Analyze the provided training logs and current configuration to identify performance issues and suggest specific 
 hyperparameter adjustments to improve model performance.
 
+TRAINING APPROACHES EXPLAINED:
+- **Single-stage training (dual_stage=false)**: Trains the entire model from the start with all layers unfrozen. Good for larger datasets where you want immediate feature adaptation.
+- **Dual-stage training (dual_stage=true)**: First trains only the top layers (feature extractor frozen), then unfreezes a percentage of layers for fine-tuning. Better for smaller datasets or when transfer learning benefits are important.
+
+You can recommend changing the training approach if the current one is not optimal for the dataset/performance.
+
 CRITICAL: Your response MUST be valid JSON with this exact structure. ALL recommended_value fields MUST contain the exact data type specified:
 
 {
@@ -272,10 +285,19 @@ CRITICAL: Your response MUST be valid JSON with this exact structure. ALL recomm
         "performance_assessment": "overall assessment of current training",
         "identified_issues": ["list of specific issues found"],
         "training_trends": "description of observed trends in metrics",
-        "convergence_status": "assessment of model convergence"
+        "convergence_status": "assessment of model convergence",
+        "recommended_approach": "single_stage|dual_stage"
     },
     "optimization_recommendations": {
         "priority": "high|medium|low",
+        "training_strategy": {
+            "dual_stage": {
+                "current_value": "current dual_stage boolean",
+                "recommended_value": true,
+                "reasoning": "explanation for training approach choice",
+                "confidence": 85
+            }
+        },
         "training_config": {
             "batch_size": {
                 "current_value": "current batch size",
@@ -340,6 +362,7 @@ CRITICAL: Your response MUST be valid JSON with this exact structure. ALL recomm
 }
 
 IMPORTANT PARAMETER GUIDELINES - FOLLOW THESE EXACTLY:
+- dual_stage: Must be boolean (true or false) - NO STRINGS
 - batch_size: Must be integer (16, 32, 64, 128, etc.) - NO STRINGS, NO DECIMALS
 - initial_learning_rate: Must be float (0.001, 0.0001, etc.) - NO STRINGS  
 - fine_tune_learning_rate: Must be float, typically 10x smaller than initial - NO STRINGS
@@ -354,6 +377,7 @@ CRITICAL: ALL recommended_value fields must contain the EXACT data type specifie
 Do NOT put numbers in quotes. Do NOT add extra decimal points.
 Example: "recommended_value": 64 (NOT "64" or "64.0")
 Example: "recommended_value": 0.001 (NOT "0.001" or "0.30.30.30...")
+Example: "recommended_value": true (NOT "true" or "True")
 
 Only recommend changes for parameters that need optimization based on the training results."""
 

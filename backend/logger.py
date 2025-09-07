@@ -94,20 +94,24 @@ def setup_llm_logger(session_id: str = None, level: int = logging.DEBUG):
 
     return logger
 
-def get_session_logs(session_id: str, limit: int = 100):
+def get_session_logs(session_id: str, limit: int = 100, include_llm_debug: bool = False):
     """
     Get recent logs for a specific session.
 
     Args:
         session_id: Session ID to get logs for
         limit: Maximum number of log lines to return
+        include_llm_debug: Whether to include LLM debug logs (default: False for frontend)
     """
     logs = []
     log_files = [
         LOGS_DIR / f"upload_handler_{session_id}.log",
-        LOGS_DIR / f"dataset_processor_{session_id}.log",
-        LOGS_DIR / f"llm_debug_{session_id}.log"
+        LOGS_DIR / f"dataset_processor_{session_id}.log"
     ]
+    
+    # Only include LLM debug logs if explicitly requested (not for frontend)
+    if include_llm_debug:
+        log_files.append(LOGS_DIR / f"llm_debug_{session_id}.log")
 
     for log_file in log_files:
         if log_file.exists():
@@ -119,6 +123,29 @@ def get_session_logs(session_id: str, limit: int = 100):
                 logs.append(f"Error reading {log_file}: {e}")
 
     return logs[-limit:]  # Return the most recent logs
+
+def get_llm_debug_logs(session_id: str, limit: int = 50):
+    """
+    Get LLM debug logs for a specific session (for debugging purposes only).
+
+    Args:
+        session_id: Session ID to get logs for
+        limit: Maximum number of log lines to return
+    """
+    logs = []
+    log_file = LOGS_DIR / f"llm_debug_{session_id}.log"
+    
+    if log_file.exists():
+        try:
+            with open(log_file, 'r') as f:
+                lines = f.readlines()
+                logs.extend(lines[-limit:])
+        except Exception as e:
+            logs.append(f"Error reading LLM debug log: {e}")
+    else:
+        logs.append("No LLM debug logs found for this session")
+
+    return logs
 
 def cleanup_old_logs(days: int = 7):
     """
