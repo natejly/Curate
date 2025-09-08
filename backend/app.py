@@ -15,7 +15,6 @@ import uuid
 from cloud.aws import AWSHelper
 import json
 import threading
-from datetime import datetime
 
 app = FastAPI(title="File Upload Server", description="Server for handling zip uploads only")
 
@@ -181,77 +180,6 @@ async def get_model_stats(session_id: str):
 
     except Exception as e:
         return {"error": f"Failed to get model stats: {str(e)}"}
-
-@app.get("/session-metrics/{session_id}")
-async def get_session_metrics(session_id: str):
-    """Get saved session metrics for restoring graph data after reconnection."""
-    try:
-        metrics_data = load_session_metrics(session_id)
-        
-        if metrics_data is None:
-            return {
-                "session_id": session_id,
-                "found": False,
-                "message": "No saved session data found"
-            }
-        
-        return {
-            "session_id": session_id,
-            "found": True,
-            "data": metrics_data,
-            "message": "Session data restored successfully"
-        }
-        
-    except Exception as e:
-        return {
-            "session_id": session_id,
-            "found": False,
-            "error": f"Failed to restore session data: {str(e)}"
-        }
-
-def save_session_metrics(session_id: str, metrics_data: dict):
-    """Save session metrics to a JSON file for persistence."""
-    try:
-        # Create session data directory
-        session_dir = Path(f"session_data/{session_id}")
-        session_dir.mkdir(parents=True, exist_ok=True)
-        
-        # Save metrics data with timestamp
-        metrics_file = session_dir / "metrics.json"
-        metrics_data_with_timestamp = {
-            **metrics_data,
-            "last_updated": datetime.now().isoformat(),
-            "version": "1.0"
-        }
-        
-        with open(metrics_file, 'w') as f:
-            json.dump(metrics_data_with_timestamp, f, indent=2)
-        
-        print(f"[DEBUG] Saved session metrics for {session_id}")
-        return True
-        
-    except Exception as e:
-        print(f"[ERROR] Failed to save session metrics for {session_id}: {e}")
-        return False
-
-def load_session_metrics(session_id: str):
-    """Load session metrics from JSON file."""
-    try:
-        metrics_file = Path(f"session_data/{session_id}/metrics.json")
-        
-        if not metrics_file.exists():
-            print(f"[DEBUG] No saved metrics found for session {session_id}")
-            return None
-        
-        with open(metrics_file, 'r') as f:
-            metrics_data = json.load(f)
-        
-        print(f"[DEBUG] Loaded session metrics for {session_id}")
-        return metrics_data
-        
-    except Exception as e:
-        print(f"[ERROR] Failed to load session metrics for {session_id}: {e}")
-        return None
 
 def parse_training_stats(log_data):
     """Parse training log data to extract final statistics."""
@@ -773,26 +701,18 @@ async def train_logs(session_id: str):
     async def log_stream():
         print(f"[DEBUG] Starting integrated log and metrics stream for session: {session_id} in {region}")
 
-        # Initialize metrics tracking - try to load existing session data first
-        existing_metrics = load_session_metrics(session_id)
-        if existing_metrics:
-            print(f"[DEBUG] Loaded existing session data for {session_id}")
-            metrics_data = existing_metrics
-            # Update status to indicate resuming
-            metrics_data["training_status"] = "resuming"
-        else:
-            print(f"[DEBUG] No existing session data found, starting fresh for {session_id}")
-            metrics_data = {
-                "session_id": session_id,
-                "stage1_metrics": [],
-                "stage2_metrics": [],
-                "current_stage": 1,
-                "training_status": "initializing",
-                "stage_info": None,
-                "final_test_results": None,
-                "optimization_iterations": [],
-                "current_optimization_iteration": 0  # Track current optimization iteration
-            }
+        # Initialize metrics tracking
+        metrics_data = {
+            "session_id": session_id,
+            "stage1_metrics": [],
+            "stage2_metrics": [],
+            "current_stage": 1,
+            "training_status": "initializing",
+            "stage_info": None,
+            "final_test_results": None,
+            "optimization_iterations": [],
+            "current_optimization_iteration": 0  # Track current optimization iteration
+        }
 
         # Keep waiting and retrying indefinitely until logs appear or training finishes
         retry_count = 0
@@ -843,8 +763,6 @@ async def train_logs(session_id: str):
                             if optimization_iterations and len(optimization_iterations) != len(metrics_data["optimization_iterations"]):
                                 metrics_data["optimization_iterations"] = optimization_iterations
                                 print(f"[DEBUG] Updated optimization iterations: {len(optimization_iterations)} found")
-                                # Save session data
-                                save_session_metrics(session_id, metrics_data)
                                 # Send updated metrics
                                 yield f"data: {json.dumps({'type': 'metrics', 'data': metrics_data})}\n\n"
                         except Exception as e:
@@ -914,8 +832,6 @@ async def train_logs(session_id: str):
                                 # Send metrics update every few epochs to keep frontend updated
                                 total_epochs = len(metrics_data["stage1_metrics"]) + len(metrics_data["stage2_metrics"])
                                 if total_epochs % 3 == 0:  # Send every 3 epochs to avoid overwhelming
-                                    # Save session data on epoch updates
-                                    save_session_metrics(session_id, metrics_data)
                                     yield f"data: {json.dumps({'type': 'metrics', 'data': metrics_data})}\n\n"
 
                             # Parse test results
@@ -972,9 +888,6 @@ async def train_logs(session_id: str):
                                     # Sort iterations by iteration number
                                     metrics_data["optimization_iterations"].sort(key=lambda x: x["iteration"])
                                     
-                                    # Save session data when optimization iteration is updated
-                                    save_session_metrics(session_id, metrics_data)
-                                    
                                     # Send updated metrics to frontend immediately
                                     yield f"data: {json.dumps({'type': 'metrics', 'data': metrics_data})}\n\n"
                                     print(f"[DEBUG] Sent optimization iteration {metrics_data['current_optimization_iteration']} to frontend")
@@ -1001,11 +914,6 @@ async def train_logs(session_id: str):
                                     if final_optimization_iterations:
                                         metrics_data["optimization_iterations"] = final_optimization_iterations
                                         print(f"[DEBUG] Final optimization iterations: {len(final_optimization_iterations)} found")
-                                    
-                                    # Save final session data
-                                    metrics_data["training_status"] = "completed"
-                                    save_session_metrics(session_id, metrics_data)
-                                    print(f"[DEBUG] Final session data saved for {session_id}")
                                 except Exception as e:
                                     print(f"[DEBUG] Error getting final optimization iterations: {e}")
                                 # Send final metrics
