@@ -272,7 +272,10 @@ class ImgClassTrainer:
         
         # Compile with lower learning rate for fine-tuning
         self.model.compile(
-            optimizer=tf.keras.optimizers.Adam(self.fine_tune_learning_rate),
+            optimizer=tf.keras.optimizers.AdamW(
+                learning_rate=self.fine_tune_learning_rate,
+                weight_decay=1e-4   # typical value, tune for your task
+            ),
             loss="sparse_categorical_crossentropy",
             metrics=["accuracy"]
         )

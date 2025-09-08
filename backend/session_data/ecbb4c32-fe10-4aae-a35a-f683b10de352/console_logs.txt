@@ -1,0 +1,197 @@
+[2025-09-07T22:16:21.147296] [22:09:54]  Custom CloudWatch logging started for session ecbb4c32-fe10-4aae-a35a-f683b10de352
+[2025-09-07T22:16:21.147775] [22:09:54]  Starting SageMaker training job
+[2025-09-07T22:16:21.148462] [22:09:54]  Arguments: {'zip_s3_path': 's3://curate-sagemaker-bucket-123456789012/curate/datasets/sorted_digits.zip', 'session_id': 'ecbb4c32-fe10-4aae-a35a-f683b10de352', 'extract_to': '/opt/ml/input/data/train', 'model_dir': 's3://curate-sagemaker-bucket-123456789012/curate/output/curate-tf-job-2025-09-08-02-03-56-468/model', 'base_model_name': 'EfficientNetB0', 'batch_size': 32, 'learning_rate': 0.001, 'epochs': 10, 'img_size': [32, 32], 'unfreeze_percent': 0.3, 'dual_stage': False, 'early_stop_threshold': 0.99, 'max_iterations': 5}
+[2025-09-07T22:16:21.148621] [22:09:54]  === DOWNLOADING DATASET ===
+[2025-09-07T22:16:21.148720] [22:09:54]  Downloading from s3://curate-sagemaker-bucket-123456789012/curate/datasets/sorted_digits.zip
+[2025-09-07T22:16:21.148801] [22:09:54]  Downloading s3://curate-sagemaker-bucket-123456789012/curate/datasets/sorted_digits.zip
+[2025-09-07T22:16:21.148870] [22:09:54]  Extracting /tmp/dataset.zip to /opt/ml/input/data/train
+[2025-09-07T22:16:21.148935] [22:09:55]  Extraction complete
+[2025-09-07T22:16:21.149000] [22:09:55]  Dataset extracted to: /opt/ml/input/data/train
+[2025-09-07T22:16:21.149064] [22:09:55]  === INITIALIZING DATA PARSER ===
+[2025-09-07T22:16:21.149124] [22:09:55]  Found 10 classes: ['9', '2', '7', '3', '0', '6', '1', '5', '8', '4']
+[2025-09-07T22:16:21.149182] [22:09:55]  === INITIALIZING TRAINER ===
+[2025-09-07T22:16:21.149239] [22:09:56]  [DEBUG]Dataset name: train
+[2025-09-07T22:16:21.149309] [22:09:56]  Using model: EfficientNetB0, batch_size: 32, epochs: 10, img_size: [32, 32]
+[2025-09-07T22:16:21.149363] [22:09:56]  Early stopping threshold: 99.0%
+[2025-09-07T22:16:21.149422] [22:09:56]  Max optimization iterations: 5
+[2025-09-07T22:16:21.149482] [22:09:56]  === AI ADVISOR: Analyzing dataset and optimizing hyperparameters ===
+[2025-09-07T22:16:21.149534] [22:09:56]  Extracting dataset information for AI analysis...
+[2025-09-07T22:16:21.149588] [22:09:56]  Calling OpenAI API for hyperparameter recommendations...
+[2025-09-07T22:16:21.149644] [22:09:56]  ================================================================================
+[2025-09-07T22:16:21.149692] [22:09:56]  NEW LLM API CALL
+[2025-09-07T22:16:21.149738] [22:09:56]  Model: gpt-4-turbo-preview
+[2025-09-07T22:16:21.149826] [22:09:56]  Session ID: ecbb4c32-fe10-4aae-a35a-f683b10de352
+[2025-09-07T22:16:21.149970] [22:09:56]  ================================================================================
+[2025-09-07T22:16:21.150065] [22:09:56]  SYSTEM PROMPT:
+[2025-09-07T22:16:21.150144] [22:09:56]  ----------------------------------------
+[2025-09-07T22:16:21.150233] [22:09:56]  ----------------------------------------
+[2025-09-07T22:16:21.150309] [22:09:56]  USER PROMPT:
+[2025-09-07T22:16:21.150382] [22:09:56]  ----------------------------------------
+[2025-09-07T22:16:21.150521] [22:09:56]  ----------------------------------------
+[2025-09-07T22:16:21.150575] [22:10:23]  HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+[2025-09-07T22:16:21.150620] [22:10:23]  RAW LLM RESPONSE:
+[2025-09-07T22:16:21.150666] [22:10:23]  ----------------------------------------
+[2025-09-07T22:16:21.150710] [22:10:23]  {
+[2025-09-07T22:16:21.150844] [22:10:23]  ----------------------------------------
+[2025-09-07T22:16:21.150895] [22:10:23]  TOKEN USAGE:
+[2025-09-07T22:16:21.150943] [22:10:23]  Prompt tokens: 3379
+[2025-09-07T22:16:21.150989] [22:10:23]  Completion tokens: 1021
+[2025-09-07T22:16:21.151034] [22:10:23]  Total tokens: 4400
+[2025-09-07T22:16:21.151080] [22:10:23]  PARSED RESPONSE STRUCTURE:
+[2025-09-07T22:16:21.151140] [22:10:23]  Top-level keys: ['analysis', 'hyperparameters', 'sagemaker_recommendations', 'data_augmentation']
+[2025-09-07T22:16:21.151189] [22:10:23]  analysis contains: ['dataset_complexity', 'recommended_approach', 'key_insights', 'potential_challenges']
+[2025-09-07T22:16:21.151306] [22:10:23]  hyperparameters contains: ['model_architecture', 'training_config', 'fine_tuning_config', 'optimization']
+[2025-09-07T22:16:21.151356] [22:10:23]  sagemaker_recommendations contains: ['instance_type', 'estimated_training_time', 'cost_estimate']
+[2025-09-07T22:16:21.151406] [22:10:23]  data_augmentation contains: ['recommended_augmentations']
+[2025-09-07T22:16:21.151454] [22:10:23]  LLM API CALL COMPLETED SUCCESSFULLY
+[2025-09-07T22:16:21.151501] [22:10:23]  ================================================================================
+[2025-09-07T22:16:21.151548] [22:10:23]  Successfully received AI recommendations
+[2025-09-07T22:16:21.151643] [22:10:23]  Using session-based model directory: /opt/ml/code/cloud/curate/models/ecbb4c32-fe10-4aae-a35a-f683b10de352
+[2025-09-07T22:16:21.151699] [22:10:23]  Session ID: ecbb4c32-fe10-4aae-a35a-f683b10de352
+[2025-09-07T22:16:21.151755] [22:10:23]  Model directory created/verified: /opt/ml/code/cloud/curate/models/ecbb4c32-fe10-4aae-a35a-f683b10de352
+[2025-09-07T22:16:21.151823] [22:10:23]  AI recommendations saved to: /opt/ml/code/cloud/curate/models/ecbb4c32-fe10-4aae-a35a-f683b10de352/ai_recommendations.json
+[2025-09-07T22:16:21.151876] [22:10:23]  AI recommendations saved to: /opt/ml/code/cloud/curate/models/ecbb4c32-fe10-4aae-a35a-f683b10de352/ai_recommendations.json
+[2025-09-07T22:16:21.151943] [22:10:23]  Applying AI recommendations to trainer configuration...
+[2025-09-07T22:16:21.151996] [22:10:23]  Raw recommendations keys: ['analysis', 'hyperparameters', 'sagemaker_recommendations', 'data_augmentation']
+[2025-09-07T22:16:21.152049] [22:10:23]  Hyperparameters keys: ['model_architecture', 'training_config', 'fine_tuning_config', 'optimization']
+[2025-09-07T22:16:21.152099] [22:10:23]  Training config keys: ['batch_size', 'initial_learning_rate', 'initial_epochs', 'image_size']
+[2025-09-07T22:16:21.152151] [22:10:23]  Recommendations structure: ['analysis', 'hyperparameters', 'sagemaker_recommendations', 'data_augmentation']
+[2025-09-07T22:16:21.152212] [22:10:23]  Using 'hyperparameters' structure
+[2025-09-07T22:16:21.152264] [22:10:23]  Params structure: ['model_architecture', 'training_config', 'fine_tuning_config', 'optimization']
+[2025-09-07T22:16:21.152322] [22:10:23]  Raw batch_size from AI: {'value': 64, 'confidence': 85, 'reasoning': 'A larger batch size can be used due to the small image size, which helps in stabilizing the training process.'}
+[2025-09-07T22:16:21.152379] [22:10:23]  Extracted batch_size value: 64 (type: <class 'int'>)
+[2025-09-07T22:16:21.152464] [22:10:23]  Updated batch_size to: 64 (type: <class 'int'>)
+[2025-09-07T22:16:21.152533] [22:10:23]  Updated initial_learning_rate to: 0.001
+[2025-09-07T22:16:21.152589] [22:10:23]  Updated initial_epochs to: 15
+[2025-09-07T22:16:21.152650] [22:10:23]  Raw image_size from AI: {'value': [32, 32], 'confidence': 100, 'reasoning': 'Matches the processed image dimensions, optimizing computational efficiency without the need for further resizing.'}
+[2025-09-07T22:16:21.152786] [22:10:23]  Extracted image_size value: [32, 32] (type: <class 'list'>)
+[2025-09-07T22:16:21.152917] [22:10:23]  Updated image_size to: (32, 32)
+[2025-09-07T22:16:21.153015] [22:10:23]  Updated fine_tune_learning_rate to: 1e-05
+[2025-09-07T22:16:21.153102] [22:10:24]  Updated fine_tune_epochs to: 20
+[2025-09-07T22:16:21.153180] [22:10:24]  Updated unfreeze_percent to: 0.2
+[2025-09-07T22:16:21.153243] [22:10:24]  Updated base_model_name to: EfficientNetB0
+[2025-09-07T22:16:21.153319] [22:10:24]  Successfully applied AI recommendations
+[2025-09-07T22:16:21.153379] [22:10:24]  Configuration changes applied:
+[2025-09-07T22:16:21.153438] [22:10:24]  batch_size: 32 -> 64
+[2025-09-07T22:16:21.153518] [22:10:24]  initial_epochs: 10 -> 15
+[2025-09-07T22:16:21.153595] [22:10:24]  fine_tune_epochs: 10 -> 20
+[2025-09-07T22:16:21.153668] [22:10:24]  unfreeze_percent: 0.3 -> 0.2
+[2025-09-07T22:16:21.153735] [22:10:24]  AI recommendations stored for training log
+[2025-09-07T22:16:21.153798] [22:10:24]  AI recommendations and reasoning stored for training log
+[2025-09-07T22:16:21.153919] [22:10:24]  === STARTING TRAINING ===
+[2025-09-07T22:16:21.153996] [22:10:24]  Training will run for 10 epochs with batch size 32
+[2025-09-07T22:16:21.154064] [22:10:24]  Running Stage 1 only...
+[2025-09-07T22:16:21.154139] [22:10:24]  Found 6997 files belonging to 10 classes.
+[2025-09-07T22:16:21.154204] [22:10:25]  Found 1495 files belonging to 10 classes.
+[2025-09-07T22:16:21.154277] [22:10:25]  Found 1508 files belonging to 10 classes.
+[2025-09-07T22:16:21.154345] [22:10:26]  Downloading data from https://storage.googleapis.com/keras-applications/efficientnetb0_notop.h5
+[2025-09-07T22:16:21.154415] [22:10:26]  8192/16705208 [..............................] - ETA: 0s
+[2025-09-07T22:16:21.154488] [22:10:27]   7479296/16705208 [============>.................] - ETA: 0s
+[2025-09-07T22:16:21.154579] [22:10:27]  16705208/16705208 [==============================] - 0s 0us/step
+[2025-09-07T22:16:21.154651] [22:10:28]  Total parameters: 4,062,381
+[2025-09-07T22:16:21.154711] [22:10:28]  Trainable parameters: 12,810
+[2025-09-07T22:16:21.154789] [22:10:28]  Frozen base model layers: 238
+[2025-09-07T22:16:21.154858] [22:10:28]  Trainable parameters (Stage 1): 12,810
+[2025-09-07T22:16:21.154936] [22:10:28]  Training Stage 1 for 15 epochs...
+[2025-09-07T22:16:21.155563] [22:10:40]  Epoch 1: loss=1.7719, acc=0.4455, val_loss=1.4121, val_acc=0.6375
+[2025-09-07T22:16:21.156863] [22:10:41]  Epoch 2: loss=1.2677, acc=0.6657, val_loss=1.1273, val_acc=0.7211
+[2025-09-07T22:16:21.157482] [22:10:42]  Epoch 3: loss=1.0599, acc=0.7173, val_loss=0.9767, val_acc=0.7565
+[2025-09-07T22:16:21.158032] [22:10:44]  Epoch 4: loss=0.9490, acc=0.7405, val_loss=0.8807, val_acc=0.7692
+[2025-09-07T22:16:21.158549] [22:10:45]  Epoch 5: loss=0.8618, acc=0.7638, val_loss=0.8101, val_acc=0.7860
+[2025-09-07T22:16:21.158990] [22:10:46]  Epoch 6: loss=0.8056, acc=0.7760, val_loss=0.7562, val_acc=0.7953
+[2025-09-07T22:16:21.159397] [22:10:48]  Epoch 7: loss=0.7644, acc=0.7830, val_loss=0.7141, val_acc=0.8100
+[2025-09-07T22:16:21.159885] [22:10:49]  Epoch 8: loss=0.7225, acc=0.7906, val_loss=0.6844, val_acc=0.8107
+[2025-09-07T22:16:21.160420] [22:10:50]  Epoch 9: loss=0.6935, acc=0.8012, val_loss=0.6515, val_acc=0.8154
+[2025-09-07T22:16:21.161396] [22:10:51]  Epoch 10: loss=0.6671, acc=0.8102, val_loss=0.6308, val_acc=0.8174
+[2025-09-07T22:16:21.162037] [22:10:53]  Epoch 11: loss=0.6525, acc=0.8081, val_loss=0.6030, val_acc=0.8375
+[2025-09-07T22:16:21.162596] [22:10:54]  Epoch 12: loss=0.6291, acc=0.8179, val_loss=0.5873, val_acc=0.8381
+[2025-09-07T22:16:21.163163] [22:10:55]  Epoch 13: loss=0.6101, acc=0.8244, val_loss=0.5716, val_acc=0.8348
+[2025-09-07T22:16:21.163704] [22:10:57]  Epoch 14: loss=0.5880, acc=0.8271, val_loss=0.5641, val_acc=0.8348
+[2025-09-07T22:16:21.164216] [22:10:58]  Epoch 15: loss=0.5797, acc=0.8264, val_loss=0.5392, val_acc=0.8495
+[2025-09-07T22:16:21.164301] [22:10:58]  Stage 1 training completed!
+[2025-09-07T22:16:21.164880] [22:10:59]  Test results: {'loss': 0.5338890552520752, 'accuracy': 0.8534482717514038}
+[2025-09-07T22:16:21.165376] [22:10:59]  === FINAL TEST RESULTS ===
+[2025-09-07T22:16:21.165894] [22:10:59]  Test loss: 0.5338890552520752
+[2025-09-07T22:16:21.166386] [22:10:59]  Test accuracy: 0.8534482717514038
+[2025-09-07T22:16:21.166455] [22:10:59]  Test accuracy for early stopping evaluation: 0.8534
+[2025-09-07T22:16:21.166518] [22:10:59]  Single-stage training results logged.
+[2025-09-07T22:16:21.166589] [22:10:59]  === STARTING AI OPTIMIZATION ITERATIONS ===
+[2025-09-07T22:16:21.166640] [22:10:59]  Running up to 5 optimization iterations
+[2025-09-07T22:16:21.167025] [22:10:59]  === OPTIMIZATION ITERATION 1/5 ===
+[2025-09-07T22:16:21.167089] [22:10:59]  Set optimization iteration to: 1
+[2025-09-07T22:16:21.167149] [22:10:59]  Training history reset for new optimization iteration
+[2025-09-07T22:16:21.167207] [22:10:59]  Resetting model to fresh state for optimization iteration...
+[2025-09-07T22:16:21.167284] [22:10:59]  Model reset complete - fresh weights will be initialized on next build()
+[2025-09-07T22:16:21.167336] [22:10:59]  Analyzing training performance for optimization...
+[2025-09-07T22:16:21.167394] [22:10:59]  ================================================================================
+[2025-09-07T22:16:21.167446] [22:10:59]  NEW LLM API CALL
+[2025-09-07T22:16:21.167497] [22:10:59]  Model: gpt-4-turbo-preview
+[2025-09-07T22:16:21.167548] [22:10:59]  Session ID: ecbb4c32-fe10-4aae-a35a-f683b10de352
+[2025-09-07T22:16:21.167600] [22:10:59]  ================================================================================
+[2025-09-07T22:16:21.167652] [22:10:59]  SYSTEM PROMPT:
+[2025-09-07T22:16:21.167703] [22:10:59]  ----------------------------------------
+[2025-09-07T22:16:21.167764] [22:10:59]  You are an expert machine learning engineer specializing in training optimization.
+[2025-09-07T22:16:21.167837] [22:10:59]  ----------------------------------------
+[2025-09-07T22:16:21.167887] [22:10:59]  USER PROMPT:
+[2025-09-07T22:16:21.167937] [22:10:59]  ----------------------------------------
+[2025-09-07T22:16:21.168117] [22:10:59]  ----------------------------------------
+[2025-09-07T22:16:21.168188] [22:11:26]  HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+[2025-09-07T22:16:21.168249] [22:11:26]  RAW LLM RESPONSE:
+[2025-09-07T22:16:21.168313] [22:11:26]  ----------------------------------------
+[2025-09-07T22:16:21.168375] [22:11:26]  {
+[2025-09-07T22:16:21.168476] [22:11:26]  ----------------------------------------
+[2025-09-07T22:16:21.168546] [22:11:26]  TOKEN USAGE:
+[2025-09-07T22:16:21.168608] [22:11:26]  Prompt tokens: 4332
+[2025-09-07T22:16:21.168669] [22:11:26]  Completion tokens: 1057
+[2025-09-07T22:16:21.168733] [22:11:26]  Total tokens: 5389
+[2025-09-07T22:16:21.168808] [22:11:26]  PARSED RESPONSE STRUCTURE:
+[2025-09-07T22:16:21.168875] [22:11:26]  Top-level keys: ['analysis', 'optimization_recommendations', 'expected_improvements', 'implementation_notes']
+[2025-09-07T22:16:21.168947] [22:11:26]  analysis contains: ['performance_assessment', 'identified_issues', 'training_trends', 'convergence_status', 'recommended_approach']
+[2025-09-07T22:16:21.169009] [22:11:26]  optimization_recommendations contains: ['priority', 'training_strategy', 'training_config', 'fine_tuning_config', 'model_architecture']
+[2025-09-07T22:16:21.169072] [22:11:26]  expected_improvements contains: ['accuracy_gain', 'convergence_speed', 'stability']
+[2025-09-07T22:16:21.169131] [22:11:26]  implementation_notes is list with 3 items
+[2025-09-07T22:16:21.169189] [22:11:27]  VALIDATION: Optimization response structure is valid
+[2025-09-07T22:16:21.169254] [22:11:27]  LLM API CALL COMPLETED SUCCESSFULLY
+[2025-09-07T22:16:21.169313] [22:11:27]  ================================================================================
+[2025-09-07T22:16:21.169382] [22:11:27]  Successfully received optimization recommendations
+[2025-09-07T22:16:21.169461] [22:11:27]  Applied optimization: dual_stage = True (was False)
+[2025-09-07T22:16:21.169530] [22:11:27]  Applied optimization: batch_size = 64 (was 64)
+[2025-09-07T22:16:21.169598] [22:11:27]  Applied optimization: initial_learning_rate = 0.001 (was 0.001)
+[2025-09-07T22:16:21.169668] [22:11:27]  Applied optimization: initial_epochs = 20 (was 15)
+[2025-09-07T22:16:21.169757] [22:11:27]  Applied optimization: custom_img_size = [224, 224] (was (32, 32))
+[2025-09-07T22:16:21.169836] [22:11:27]  Applied optimization: fine_tune_learning_rate = 0.0001 (was 1e-05)
+[2025-09-07T22:16:21.169917] [22:11:27]  Applied optimization: fine_tune_epochs = 10 (was 20)
+[2025-09-07T22:16:21.169979] [22:11:27]  Applied optimization: unfreeze_percent = 0.3 (was 0.2)
+[2025-09-07T22:16:21.170131] [22:11:27]  Applied optimization: base_model_name = EfficientNetB1 (was EfficientNetB0)
+[2025-09-07T22:16:21.170248] [22:11:27]  Successfully applied 9 optimization changes using edit_config
+[2025-09-07T22:16:21.170361] [22:11:27]  Optimization 1 recommendations applied. Running training with fresh model...
+[2025-09-07T22:16:21.170472] [22:11:27]  Running full two-stage training...
+[2025-09-07T22:16:21.170529] [22:11:27]  Found 6997 files belonging to 10 classes.
+[2025-09-07T22:16:21.170593] [22:11:27]  Found 1495 files belonging to 10 classes.
+[2025-09-07T22:16:21.170668] [22:11:27]  Found 1508 files belonging to 10 classes.
+[2025-09-07T22:16:21.170738] [22:11:30]  Downloading data from https://storage.googleapis.com/keras-applications/efficientnetb1_notop.h5
+[2025-09-07T22:16:21.170805] [22:11:30]  8192/27018416 [..............................] - ETA: 0s
+[2025-09-07T22:16:21.170876] [22:11:30]   6299648/27018416 [=====>........................] - ETA: 0s
+[2025-09-07T22:16:21.170949] [22:11:30]  12845056/27018416 [=============>................] - ETA: 0s
+[2025-09-07T22:16:21.171013] [22:11:30]  19709952/27018416 [====================>.........] - ETA: 0s
+[2025-09-07T22:16:21.171076] [22:11:30]  27018416/27018416 [==============================] - 0s 0us/step
+[2025-09-07T22:16:21.171138] [22:11:32]  Total parameters: 6,588,049
+[2025-09-07T22:16:21.171201] [22:11:32]  Trainable parameters: 12,810
+[2025-09-07T22:16:21.171279] [22:11:32]  Frozen base model layers: 340
+[2025-09-07T22:16:21.171341] [22:11:32]  Trainable parameters (Stage 1): 12,810
+[2025-09-07T22:16:21.171404] [22:11:32]  Training Stage 1 for 20 epochs...
+[2025-09-07T22:16:21.172641] [22:12:03]  Epoch 1: loss=1.1412, acc=0.7000, val_loss=0.6487, val_acc=0.8415
+[2025-09-07T22:16:21.173060] [22:12:22]  Epoch 2: loss=0.5302, acc=0.8678, val_loss=0.4312, val_acc=0.8890
+[2025-09-07T22:16:21.173411] [22:12:41]  Epoch 3: loss=0.3922, acc=0.9051, val_loss=0.3434, val_acc=0.9077
+[2025-09-07T22:16:21.173911] [22:13:00]  Epoch 4: loss=0.3196, acc=0.9167, val_loss=0.2911, val_acc=0.9177
+[2025-09-07T22:16:21.174405] [22:13:19]  Epoch 5: loss=0.2757, acc=0.9294, val_loss=0.2566, val_acc=0.9251
+[2025-09-07T22:16:21.174844] [22:13:38]  Epoch 6: loss=0.2485, acc=0.9343, val_loss=0.2343, val_acc=0.9291
+[2025-09-07T22:16:21.175234] [22:13:57]  Epoch 7: loss=0.2240, acc=0.9388, val_loss=0.2172, val_acc=0.9338
+[2025-09-07T22:16:21.175914] [22:14:16]  Epoch 8: loss=0.2033, acc=0.9448, val_loss=0.2023, val_acc=0.9405
+[2025-09-07T22:16:21.176881] [22:14:34]  Epoch 9: loss=0.1927, acc=0.9450, val_loss=0.1930, val_acc=0.9418
+[2025-09-07T22:16:21.177529] [22:14:53]  Epoch 10: loss=0.1826, acc=0.9508, val_loss=0.1807, val_acc=0.9445
+[2025-09-07T22:16:21.177941] [22:15:12]  Epoch 11: loss=0.1705, acc=0.9550, val_loss=0.1766, val_acc=0.9438
+[2025-09-07T22:16:21.178364] [22:15:31]  Epoch 12: loss=0.1631, acc=0.9546, val_loss=0.1669, val_acc=0.9538
+[2025-09-07T22:16:21.178747] [22:15:50]  Epoch 13: loss=0.1506, acc=0.9590, val_loss=0.1603, val_acc=0.9552
+[2025-09-07T22:16:21.179174] [22:16:09]  Epoch 14: loss=0.1502, acc=0.9561, val_loss=0.1576, val_acc=0.9512
+[2025-09-07T22:16:30.382989] [22:16:28]  Epoch 15: loss=0.1391, acc=0.9623, val_loss=0.1514, val_acc=0.9532
