@@ -106,13 +106,14 @@ Analyze training logs and make SUBSTANTIAL changes that will have significant im
 
 ESCALATION ORDER - Apply changes in this priority:
 1. **HYPERPARAMETERS** (Primary): learning_rates, batch_size, epochs, unfreeze_percent, image_size, dual_stage
-2. **ARCHITECTURE** (Last resort): Change base_model when hyperparameters aren't sufficient
+2. **ARCHITECTURE** (RARELY): Change base_model ONLY after exhausting hyperparameter options AND only if performance is severely inadequate
 
-MAKE BOLD CHANGES:
-- Don't suggest minor tweaks - recommend changes that will meaningfully impact training
-- If learning rate is causing issues, make significant adjustments (order of magnitude changes, not small increments)
+HYPERPARAMETER-FIRST APPROACH:
+- ALWAYS try hyperparameter adjustments before considering architecture changes
+- Make substantial hyperparameter changes that will meaningfully impact training
+- If learning rate is causing issues, make significant adjustments (order of magnitude changes, not small increments)  
 - If batch size is suboptimal, recommend substantial changes based on dataset size and memory constraints
-- If model is struggling, consider jumping to significantly larger or smaller architectures
+- Architecture changes should be EXTREMELY RARE - only when hyperparameters cannot solve fundamental capacity issues
 
 TRAINING APPROACHES:
 - Single-stage (dual_stage=false): Trains entire model with unfrozen layers. Good for larger datasets.
@@ -200,9 +201,10 @@ ESCALATION ANALYSIS (in priority order):
    - Image size: Optimize input dimensions for model and dataset
    - Dual stage: Switch between single-stage and dual-stage training approaches based on dataset size and complexity
 
-2. **ARCHITECTURE LAST**: 
-   - Only if hyperparameters insufficient
-   - Jump between model sizes for substantial capacity changes (smaller for overfitting, larger for underfitting)
+2. **ARCHITECTURE** (AVOID UNLESS CRITICAL): 
+   - DO NOT change architecture unless hyperparameters have been thoroughly optimized first
+   - Only consider architecture changes if current model has fundamental capacity limitations
+   - Must provide strong evidence that hyperparameter optimization cannot solve the performance issues
 
 IMPACT REQUIREMENTS:
 - Make changes that will create measurable performance differences
