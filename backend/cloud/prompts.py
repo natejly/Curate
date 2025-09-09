@@ -166,7 +166,7 @@ RESPONSE FORMAT - Valid JSON only:
         "model_architecture": {
             "base_model_name": {
                 "recommended_value": "string_model_name",
-                "reasoning": "explanation"
+                "reasoning": "explanation - ONLY recommend if hyperparameters cannot solve fundamental capacity issues"
             }
         }
     }
@@ -212,12 +212,18 @@ IMPACT REQUIREMENTS:
 - Prioritize changes with highest expected impact
 - Explain why each change will substantially improve training
 
-GOALS:
-- Achieve significant validation accuracy improvements
-- Dramatically improve training efficiency
-- Make substantial impact on model performance
+ARCHITECTURE CHANGE RESTRICTIONS:
+- DO NOT recommend architecture changes unless absolutely necessary
+- Hyperparameter optimization should solve 95% of performance issues
+- Only change base_model if there's clear evidence of fundamental model capacity limitations
+- Provide compelling justification if architecture change is truly required
 
-Focus on high-impact changes with clear reasoning for substantial improvements.
+GOALS:
+- Achieve significant validation accuracy improvements through hyperparameter optimization
+- Dramatically improve training efficiency via learning rates, batch sizes, and training approach
+- Make substantial impact on model performance WITHOUT changing architecture
+
+Focus on hyperparameter changes with clear reasoning. Architecture changes require exceptional justification.
 """
 
 def get_hyperparameter_prompt(dataset_info, current_config):
