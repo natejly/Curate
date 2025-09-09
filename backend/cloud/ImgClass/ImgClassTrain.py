@@ -451,7 +451,28 @@ class ImgClassTrainer:
     def set_ai_recommendations(self, recommendations):
         """Set AI recommendations for logging."""
         self.ai_recommendations = recommendations
-        print(f"AI recommendations stored for training log")
+        print(f"🤖 AI recommendations stored for training log")
+        
+        # Display applied changes in console for frontend visibility
+        if recommendations and "applied_changes" in recommendations:
+            applied_changes = recommendations["applied_changes"]
+            if applied_changes:
+                print(f"\n🎯 === AI CONFIGURATION CHANGES ===")
+                for param, change_info in applied_changes.items():
+                    original = change_info.get("original", "None")
+                    applied = change_info.get("applied", "Unknown")
+                    reasoning = change_info.get("reasoning", "No reasoning provided")
+                    
+                    if original is None or original == "None":
+                        print(f"✓ {param}: {applied} (new)")
+                    else:
+                        print(f"✓ {param}: {original} → {applied}")
+                    print(f"  💡 {reasoning}")
+                print(f"🎯 === {len(applied_changes)} CHANGES APPLIED ===\n")
+            else:
+                print("ℹ️  No configuration changes were needed")
+        else:
+            print("ℹ️  No AI changes to display")
     
     def set_optimization_iteration(self, iteration_number):
         """Set the current optimization iteration number and reset training history."""

@@ -17,8 +17,6 @@ except ImportError:
 from prompts import (
     HYPERPARAMETER_ADVISOR_SYSTEM_PROMPT,
     get_hyperparameter_prompt,
-    get_dataset_analysis_prompt,
-    get_error_analysis_prompt,
     OPTIMIZATION_SYSTEM_PROMPT,
     get_optimization_prompt
 )
@@ -35,7 +33,7 @@ logger = logging.getLogger(__name__)
 class TrainingAdvisor:
     """AI-powered training advisor for hyperparameter optimization."""
     
-    def __init__(self, api_key: Optional[str] = None, model: str = "gpt-4-turbo-preview", session_id: Optional[str] = None):
+    def __init__(self, api_key: Optional[str] = None, model: str = "gpt-4o-mini", session_id: Optional[str] = None):
         """
         Initialize the training advisor.
         
@@ -188,22 +186,7 @@ class TrainingAdvisor:
             Parsed JSON response or None if failed
         """
         try:
-            # Log the input prompts
-            self.llm_logger.info("=" * 80)
-            self.llm_logger.info("NEW LLM API CALL")
-            self.llm_logger.info(f"Model: {self.model}")
-            self.llm_logger.info(f"Session ID: {self.session_id}")
-            self.llm_logger.info("=" * 80)
-            
-            self.llm_logger.info("SYSTEM PROMPT:")
-            self.llm_logger.info("-" * 40)
-            self.llm_logger.info(system_prompt[:1000] + "..." if len(system_prompt) > 1000 else system_prompt)
-            self.llm_logger.info("-" * 40)
-            
-            self.llm_logger.info("USER PROMPT:")
-            self.llm_logger.info("-" * 40)
-            self.llm_logger.info(user_prompt[:2000] + "..." if len(user_prompt) > 2000 else user_prompt)
-            self.llm_logger.info("-" * 40)
+
             
             response = self.client.chat.completions.create(
                 model=self.model,

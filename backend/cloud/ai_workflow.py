@@ -142,6 +142,9 @@ class AIWorkflowManager:
     
     def _process_recommendations(self, recommendations: Dict[str, Any], trainer) -> None:
         """Process and apply AI recommendations."""
+        # Store recommendations for reasoning extraction
+        self._current_recommendations = recommendations
+        
         # Store original config for comparison
         original_config = self.advisor.get_current_config(trainer)
         
@@ -213,32 +216,110 @@ class AIWorkflowManager:
             training_config = hyperparams["training_config"]
             logger.info(f"Training config keys: {list(training_config.keys())}")
     
+    def _extract_reasoning_from_recommendations(self) -> Dict[str, str]:
+        """Extract reasoning from the current AI recommendations."""
+        if not hasattr(self, '_current_recommendations') or not self._current_recommendations:
+            return {}
+        
+        reasoning_map = {}
+        recommendations = self._current_recommendations
+        
+        # Extract reasoning from hyperparameters section
+        if "hyperparameters" in recommendations:
+            hyperparams = recommendations["hyperparameters"]
+            
+            # Training config reasoning
+            if "training_config" in hyperparams:
+                for param, details in hyperparams["training_config"].items():
+                    if isinstance(details, dict) and "reasoning" in details:
+                        reasoning_map[self._map_param_name(param)] = details["reasoning"]
+            
+            # Fine-tuning config reasoning
+            if "fine_tuning_config" in hyperparams:
+                for param, details in hyperparams["fine_tuning_config"].items():
+                    if isinstance(details, dict) and "reasoning" in details:
+                        reasoning_map[self._map_param_name(param)] = details["reasoning"]
+            
+            # Model architecture reasoning
+            if "model_architecture" in hyperparams:
+                arch_details = hyperparams["model_architecture"]
+                if "base_model" in arch_details and isinstance(arch_details["base_model"], dict):
+                    if "reasoning" in arch_details["base_model"]:
+                        reasoning_map["base_model_name"] = arch_details["base_model"]["reasoning"]
+        
+        # Extract reasoning from optimization recommendations
+        if "optimization_recommendations" in recommendations:
+            opt_recs = recommendations["optimization_recommendations"]
+            
+            for section in ["training_config", "fine_tuning_config", "model_architecture"]:
+                if section in opt_recs:
+                    for param, details in opt_recs[section].items():
+                        if isinstance(details, dict) and "reasoning" in details:
+                            reasoning_map[self._map_param_name(param)] = details["reasoning"]
+        
+        return reasoning_map
+    
+    def _map_param_name(self, param_name: str) -> str:
+        """Map AI recommendation parameter names to trainer attribute names."""
+        param_mapping = {
+            "batch_size": "batch_size",
+            "initial_learning_rate": "initial_learning_rate",
+            "fine_tune_learning_rate": "fine_tune_learning_rate",
+            "initial_epochs": "initial_epochs",
+            "fine_tune_epochs": "fine_tune_epochs",
+            "unfreeze_percent": "unfreeze_percent",
+            "image_size": "custom_img_size",
+            "base_model": "base_model_name",
+            "base_model_name": "base_model_name"
+        }
+        return param_mapping.get(param_name, param_name)
+    
     def _track_config_changes(self, trainer, original_config: Dict[str, Any]) -> Dict[str, Any]:
-        """Track and log configuration changes."""
+        """Track and log configuration changes with reasoning."""
         updated_config = self.advisor.get_current_config(trainer)
         changes_applied = {}
         
-        logger.info("Configuration changes applied:")
+        # Get reasoning from stored AI recommendations
+        reasoning_map = self._extract_reasoning_from_recommendations()
+        
+        logger.info("=== AI CONFIGURATION CHANGES APPLIED ===")
         
         for key, new_value in updated_config.items():
             original_value = original_config.get(key)
             
             if original_value is None:
                 # New configuration parameter
-                logger.info(f"  {key}: {new_value} (new)")
+                reasoning = reasoning_map.get(key, "AI recommendation - no specific reasoning provided")
+                logger.info(f"  ✓ {key}: {new_value} (new)")
+                logger.info(f"    💡 Reasoning: {reasoning}")
+                print(f"🤖 AI CHANGE: {key} = {new_value} (new)")
+                print(f"   💡 Why: {reasoning}")
                 changes_applied[key] = {
                     "original": None,
                     "applied": new_value,
-                    "source": "ai_recommendation"
+                    "source": "ai_recommendation",
+                    "reasoning": reasoning
                 }
             elif original_value != new_value:
                 # Changed configuration parameter
-                logger.info(f"  {key}: {original_value} -> {new_value}")
+                reasoning = reasoning_map.get(key, "AI recommendation - no specific reasoning provided")
+                logger.info(f"  ✓ {key}: {original_value} → {new_value}")
+                logger.info(f"    💡 Reasoning: {reasoning}")
+                print(f"🤖 AI CHANGE: {key} = {original_value} → {new_value}")
+                print(f"   💡 Why: {reasoning}")
                 changes_applied[key] = {
                     "original": original_value,
                     "applied": new_value,
-                    "source": "ai_recommendation"
+                    "source": "ai_recommendation",
+                    "reasoning": reasoning
                 }
+        
+        if changes_applied:
+            logger.info(f"=== {len(changes_applied)} AI CHANGES APPLIED ===")
+            print(f"🎯 Applied {len(changes_applied)} AI-recommended changes to improve training performance")
+        else:
+            logger.info("=== NO AI CHANGES NEEDED ===")
+            print("ℹ️  No configuration changes recommended by AI advisor")
         
         return changes_applied
     

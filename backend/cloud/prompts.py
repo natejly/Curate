@@ -1,19 +1,19 @@
 """
-AI Advisor prompts for hyperparameter optimization
-Contains system prompts and templates for OpenAI API calls
+Streamlined AI Advisor prompts for hyperparameter optimization.
+Focused on hyperparameters, image size, and model architecture only.
 """
 
 HYPERPARAMETER_ADVISOR_SYSTEM_PROMPT = """
 You are an expert machine learning engineer specializing in computer vision and transfer learning optimization.
 
-Your task is to analyze dataset characteristics and recommend optimal hyperparameters for training image classification models on AWS SageMaker using TensorFlow.
+Your task is to analyze dataset characteristics and recommend optimal hyperparameters for training image classification models.
 
 Key areas of expertise:
-- Transfer learning with pre-trained models (EfficientNet, ResNet, Vision Transformers, etc.)
-- Learning rate scheduling and optimization strategies
+- Transfer learning with pre-trained models (EfficientNet)
+- Learning rate optimization for initial training and fine-tuning
 - Batch size optimization based on dataset size and complexity
 - Training duration and epoch recommendations
-- Data augmentation strategies
+- Image size selection for optimal performance
 - Model architecture selection
 
 You must provide responses in valid JSON format only, with detailed reasoning for each recommendation.
@@ -31,16 +31,12 @@ Current Configuration:
 Requirements:
 1. Recommend optimal hyperparameters for both single-stage and dual-stage training
 2. Consider the dataset size, image dimensions, and class distribution
-3. Optimize for AWS SageMaker constraints and best practices
-4. Provide reasoning for each recommendation
-5. Include confidence scores (0-100) for each recommendation
-6. Choose between single-stage or dual-stage training approach
+3. Provide reasoning for each recommendation
+4. Choose between single-stage or dual-stage training approach
 
 TRAINING APPROACHES EXPLAINED:
 - **Single-stage training**: Trains the entire model from the start with unfrozen layers. Good for larger datasets where you want immediate feature adaptation.
 - **Dual-stage training**: First trains only the top layers (feature extractor frozen), then unfreezes a percentage of layers for fine-tuning. Better for smaller datasets or when transfer learning benefits are important.
-
-Current dual_stage setting: The model will use the approach you recommend in "analysis.recommended_approach".
 
 IMPORTANT:
 1. Use exactly the key "value" (not "recommended_value" or any other variant) for all parameter values.
@@ -48,392 +44,168 @@ IMPORTANT:
    - batch_size: integer (e.g., 64, not "64")
    - learning rates: float (e.g., 0.001, not "0.001")
    - epochs: integer (e.g., 20, not "20")
-   - image_size: array of two integers (e.g., [224, 224], not ["224", "224"] or "[224, 224]")
+   - image_size: array of two integers (e.g., [224, 224], not ["224", "224"])
    - unfreeze_percent: float between 0 and 1 (e.g., 0.5, not "0.5")
-   - confidence: integer between 0-100 (e.g., 85, not "85")
 
 Respond with the following JSON structure exactly as shown:
 {{
   "analysis": {{
     "dataset_complexity": "low|medium|high",
     "recommended_approach": "single_stage|dual_stage",
-    "key_insights": ["insight1", "insight2", "..."],
-    "potential_challenges": ["challenge1", "challenge2", "..."]
+    "key_insights": ["insight1", "insight2", "..."]
   }},
   "hyperparameters": {{
     "model_architecture": {{
       "base_model": {{
         "value": "string_model_name",
-        "confidence": "integer_0_to_100",
         "reasoning": "explanation"
       }}
     }},
     "training_config": {{
       "batch_size": {{
         "value": "integer_value_based_on_dataset",
-        "confidence": "integer_0_to_100",
         "reasoning": "explanation"
       }},
       "initial_learning_rate": {{
         "value": "float_value_based_on_model",
-        "confidence": "integer_0_to_100",
         "reasoning": "explanation"
       }},
       "initial_epochs": {{
         "value": "integer_value_based_on_dataset",
-        "confidence": "integer_0_to_100",
         "reasoning": "explanation"
       }},
       "image_size": {{
         "value": ["integer_width", "integer_height"],
-        "confidence": "integer_0_to_100",
         "reasoning": "explanation"
       }}
     }},
     "fine_tuning_config": {{
       "fine_tune_learning_rate": {{
         "value": "float_value_for_fine_tuning",
-        "confidence": "integer_0_to_100",
         "reasoning": "explanation"
       }},
       "fine_tune_epochs": {{
         "value": "integer_value_for_convergence",
-        "confidence": "integer_0_to_100",
         "reasoning": "explanation"
       }},
       "unfreeze_percent": {{
         "value": "float_0_to_1_for_layers",
-        "confidence": "integer_0_to_100",
-        "reasoning": "explanation"
-      }}
-    }},
-    "optimization": {{
-      "optimizer": {{
-        "type": "string_optimizer_name",
-        "weight_decay": "float_regularization_value",
-        "confidence": "integer_0_to_100",
-        "reasoning": "explanation"
-      }},
-      "scheduler": {{
-        "type": "string_scheduler_name",
-        "factor": "float_decay_factor",
-        "patience": "integer_patience_value",
-        "confidence": "integer_0_to_100",
         "reasoning": "explanation"
       }}
     }}
-  }},
-  "sagemaker_recommendations": {{
-    "instance_type": {{
-      "value": "string_instance_type",
-      "confidence": "integer_0_to_100",
-      "reasoning": "explanation"
-    }},
-    "estimated_training_time": {{
-      "single_stage": "string_time_estimate",
-      "dual_stage": "string_time_estimate"
-    }},
-    "cost_estimate": {{
-      "approximate_cost": "string_cost_range",
-      "reasoning": "explanation"
-    }}
-  }},
-  "data_augmentation": {{
-    "recommended_augmentations": [
-      {{
-        "type": "string_augmentation_type",
-        "parameters": {{"string_param_name": "appropriate_param_value"}},
-        "confidence": "integer_0_to_100",
-        "reasoning": "explanation"
-      }}
-    ]
-  }}
-}}
-"""
-
-DATASET_ANALYSIS_PROMPT = """
-Based on the dataset characteristics provided, analyze the data distribution and provide insights:
-
-Dataset Details:
-{dataset_details}
-
-Focus on:
-1. Class balance and potential bias issues
-2. Image quality and consistency
-3. Dataset size adequacy for transfer learning
-4. Potential overfitting risks
-5. Recommended validation split strategy
-
-Provide analysis in JSON format with actionable recommendations.
-
-Expected JSON structure:
-{{
-  "dataset_analysis": {{
-    "class_balance": {{
-      "status": "balanced|imbalanced|severely_imbalanced",
-      "recommendations": ["recommendation1", "recommendation2"],
-      "confidence": "<0-100>"
-    }},
-    "image_quality": {{
-      "assessment": "high|medium|low|mixed",
-      "issues": ["issue1", "issue2"],
-      "recommendations": ["recommendation1", "recommendation2"]
-    }},
-    "dataset_adequacy": {{
-      "size_assessment": "sufficient|marginal|insufficient",
-      "transfer_learning_viability": "high|medium|low",
-      "recommendations": ["recommendation1", "recommendation2"]
-    }},
-    "overfitting_risk": {{
-      "risk_level": "low|medium|high",
-      "mitigation_strategies": ["strategy1", "strategy2"]
-    }},
-    "validation_strategy": {{
-      "recommended_split": {{
-        "train_percent": "<percentage>",
-        "validation_percent": "<percentage>",
-        "test_percent": "<percentage>"
-      }},
-      "split_method": "random|stratified|temporal|custom",
-      "reasoning": "explanation"
-    }}
-  }}
-}}
-"""
-
-ERROR_ANALYSIS_PROMPT = """
-Analyze the training results and suggest improvements:
-
-Training History:
-{training_history}
-
-Current Performance:
-{performance_metrics}
-
-Previous Hyperparameters:
-{previous_config}
-
-Identify issues and suggest hyperparameter adjustments to improve performance.
-
-Expected JSON response structure:
-{{
-  "performance_analysis": {{
-    "identified_issues": [
-      {{
-        "issue": "overfitting|underfitting|poor_convergence|class_imbalance|etc",
-        "evidence": "specific evidence from metrics",
-        "severity": "low|medium|high"
-      }}
-    ],
-    "root_causes": ["cause1", "cause2"],
-    "improvement_potential": "low|medium|high"
-  }},
-  "hyperparameter_adjustments": {{
-    "learning_rate": {{
-      "current_value": "<current>",
-      "suggested_value": "<suggested>",
-      "reasoning": "explanation",
-      "priority": "low|medium|high"
-    }},
-    "batch_size": {{
-      "current_value": "<current>",
-      "suggested_value": "<suggested>",
-      "reasoning": "explanation",
-      "priority": "low|medium|high"
-    }},
-    "model_architecture": {{
-      "current_value": "<current>",
-      "suggested_value": "<suggested>",
-      "reasoning": "explanation",
-      "priority": "low|medium|high"
-    }},
-    "regularization": {{
-      "current_techniques": ["technique1", "technique2"],
-      "suggested_techniques": ["technique1", "technique2"],
-      "reasoning": "explanation",
-      "priority": "low|medium|high"
-    }},
-    "data_augmentation": {{
-      "current_augmentations": ["aug1", "aug2"],
-      "suggested_augmentations": ["aug1", "aug2"],
-      "reasoning": "explanation",
-      "priority": "low|medium|high"
-    }}
-  }},
-  "training_strategy": {{
-    "recommended_approach": "continue_training|restart_with_changes|multi_stage_training",
-    "next_steps": ["step1", "step2", "step3"],
-    "expected_improvement": "estimated improvement description"
   }}
 }}
 """
 
 OPTIMIZATION_SYSTEM_PROMPT = """You are an expert machine learning engineer specializing in training optimization. 
-Analyze the provided training logs and current configuration to identify performance issues and suggest specific 
-hyperparameter adjustments to improve model performance.
+Analyze training logs and make SUBSTANTIAL changes that will have significant impact on model performance.
 
-TRAINING APPROACHES EXPLAINED:
-- **Single-stage training (dual_stage=false)**: Trains the entire model from the start with all layers unfrozen. Good for larger datasets where you want immediate feature adaptation.
-- **Dual-stage training (dual_stage=true)**: First trains only the top layers (feature extractor frozen), then unfreezes a percentage of layers for fine-tuning. Better for smaller datasets or when transfer learning benefits are important.
+ESCALATION ORDER - Apply changes in this priority:
+1. **HYPERPARAMETERS** (Primary): learning_rates, batch_size, epochs, unfreeze_percent, image_size
+3. **ARCHITECTURE** (Last resort): Change base_model when hyperparameters aren't sufficient
 
-You can recommend changing the training approach if the current one is not optimal for the dataset/performance.
+MAKE BOLD CHANGES:
+- Don't suggest minor tweaks - recommend changes that will meaningfully impact training
+- If learning rate is causing issues, make significant adjustments (order of magnitude changes, not small increments)
+- If batch size is suboptimal, recommend substantial changes based on dataset size and memory constraints
+- If model is struggling, consider jumping to significantly larger or smaller architectures
 
-CRITICAL: Your response MUST be valid JSON with this exact structure. ALL recommended_value fields MUST contain the exact data type specified:
+TRAINING APPROACHES:
+- Single-stage (dual_stage=false): Trains entire model with unfrozen layers. Good for larger datasets.
+- Dual-stage (dual_stage=true): First trains top layers, then fine-tunes. Better for smaller datasets.
 
+RESPONSE FORMAT - Valid JSON only:
 {
     "analysis": {
-        "performance_assessment": "overall assessment of current training",
-        "identified_issues": ["list of specific issues found"],
-        "training_trends": "description of observed trends in metrics",
-        "convergence_status": "assessment of model convergence",
+        "performance_assessment": "brief assessment",
+        "identified_issues": ["specific issues"],
         "recommended_approach": "single_stage|dual_stage"
     },
     "optimization_recommendations": {
-        "priority": "high|medium|low",
-        "training_strategy": {
-            "dual_stage": {
-                "current_value": "current dual_stage boolean",
-                "recommended_value": true,
-                "reasoning": "explanation for training approach choice",
-                "confidence": 85
-            }
-        },
         "training_config": {
             "batch_size": {
-                "current_value": "current batch size",
-                "recommended_value": 64,
-                "reasoning": "explanation for this change",
-                "confidence": 85
+                "recommended_value": "integer_value",
+                "reasoning": "explanation"
             },
             "initial_learning_rate": {
-                "current_value": "current learning rate",
-                "recommended_value": 0.001,
-                "reasoning": "explanation for this change",
-                "confidence": 85
+                "recommended_value": "float_value",
+                "reasoning": "explanation"
             },
             "initial_epochs": {
-                "current_value": "current epochs",
-                "recommended_value": 20,
-                "reasoning": "explanation for this change",
-                "confidence": 85
+                "recommended_value": "integer_value",
+                "reasoning": "explanation"
             },
             "image_size": {
-                "current_value": "current image size",
-                "recommended_value": [224, 224],
-                "reasoning": "explanation for this change",
-                "confidence": 85
+                "recommended_value": ["width", "height"],
+                "reasoning": "explanation"
             }
         },
         "fine_tuning_config": {
             "fine_tune_learning_rate": {
-                "current_value": "current fine tune learning rate",
-                "recommended_value": 0.0001,
-                "reasoning": "explanation for this change",
-                "confidence": 85
+                "recommended_value": "float_value",
+                "reasoning": "explanation"
             },
             "fine_tune_epochs": {
-                "current_value": "current fine tune epochs",
-                "recommended_value": 10,
-                "reasoning": "explanation for this change",
-                "confidence": 85
+                "recommended_value": "integer_value",
+                "reasoning": "explanation"
             },
             "unfreeze_percent": {
-                "current_value": "current unfreeze percent",
-                "recommended_value": 0.3,
-                "reasoning": "explanation for this change",
-                "confidence": 85
+                "recommended_value": "float_value",
+                "reasoning": "explanation"
             }
         },
         "model_architecture": {
             "base_model_name": {
-                "current_value": "current model name",
-                "recommended_value": "EfficientNetB1",
-                "reasoning": "explanation for this change",
-                "confidence": 85
+                "recommended_value": "string_model_name",
+                "reasoning": "explanation"
             }
         }
-    },
-    "expected_improvements": {
-        "accuracy_gain": "estimated improvement in accuracy percentage",
-        "convergence_speed": "expected change in convergence speed",
-        "stability": "expected change in training stability"
-    },
-    "implementation_notes": ["specific notes about applying these changes"]
+    }
 }
 
-IMPORTANT PARAMETER GUIDELINES - FOLLOW THESE EXACTLY:
-- dual_stage: Must be boolean (true or false) - NO STRINGS
-- batch_size: Must be integer (16, 32, 64, 128, etc.) - NO STRINGS, NO DECIMALS
-- initial_learning_rate: Must be float (0.001, 0.0001, etc.) - NO STRINGS  
-- fine_tune_learning_rate: Must be float, typically 10x smaller than initial - NO STRINGS
-- initial_epochs: Must be integer (5-50 typical range) - NO STRINGS, NO DECIMALS
-- fine_tune_epochs: Must be integer (5-30 typical range) - NO STRINGS, NO DECIMALS  
-- image_size: Must be array of exactly two integers [height, width] - NO STRINGS
-- unfreeze_percent: Must be float between 0.0-1.0 (0.3 = 30% of layers) - NO STRINGS
-- base_model_name: Must be valid string in EfficientNet family (EfficientNetB0, EfficientNetB1, etc.)
-- confidence: Must be integer 0-100 - NO STRINGS, NO DECIMALS
+PARAMETER TYPES:
+- batch_size: integer (power of 2 values)
+- learning_rates: float (scientific notation format)  
+- epochs: integer (positive values)
+- image_size: [width, height] integers (square or rectangular)
+- unfreeze_percent: float 0.0-1.0 (percentage as decimal)
+- base_model_name: string (EfficientNet family)
 
-CRITICAL: ALL recommended_value fields must contain the EXACT data type specified above.
-Do NOT put numbers in quotes. Do NOT add extra decimal points.
-Example: "recommended_value": 64 (NOT "64" or "64.0")
-Example: "recommended_value": 0.001 (NOT "0.001" or "0.30.30.30...")
-Example: "recommended_value": true (NOT "true" or "True")
-
-Only recommend changes for parameters that need optimization based on the training results."""
+Only recommend changes needed for optimization."""
 
 OPTIMIZATION_REQUEST_TEMPLATE = """
-Please analyze the following training results and suggest specific optimizations:
+Analyze training results and make SUBSTANTIAL optimizations that will significantly impact performance:
 
-CURRENT CONFIGURATION:
+CURRENT CONFIG:
 {current_config}
 
-TRAINING LOG DATA:
+TRAINING DATA:
 {training_log}
 
-ANALYSIS REQUIREMENTS:
-1. **Learning Rate Analysis**: 
-   - Examine loss curves for signs of too high/low learning rates
-   - Check if initial_learning_rate and fine_tune_learning_rate are optimal
-   - Look for oscillations, plateaus, or slow convergence
+ESCALATION ANALYSIS (in priority order):
+1. **HYPERPARAMETERS FIRST**: 
+   - Learning rates: If problematic, make order-of-magnitude adjustments
+   - Batch size: Make significant changes based on dataset size and memory constraints
+   - Epochs: Substantial increases/decreases if under/overfitting detected
+   - Unfreeze percent: Bold adjustments if fine-tuning issues identified
+   - Image size: Optimize input dimensions for model and dataset
 
-2. **Batch Size Analysis**:
-   - Evaluate current batch_size effectiveness
-   - Consider memory constraints and convergence stability
-   - Assess impact on gradient quality
+2. **ARCHITECTURE LAST**: 
+   - Only if hyperparameters insufficient
+   - Jump between model sizes for substantial capacity changes (smaller for overfitting, larger for underfitting)
 
-3. **Epoch Analysis**:
-   - Determine if initial_epochs and fine_tune_epochs are sufficient
-   - Identify early stopping opportunities or need for more training
-   - Check for overfitting vs underfitting patterns
+IMPACT REQUIREMENTS:
+- Make changes that will create measurable performance differences
+- Avoid minor tweaks - recommend bold adjustments
+- Prioritize changes with highest expected impact
+- Explain why each change will substantially improve training
 
-4. **Model Architecture Analysis**:
-   - Evaluate if base_model_name is appropriate for dataset complexity
-   - Consider model capacity vs dataset size
-   - Assess if image_size is optimal for the chosen model
+GOALS:
+- Achieve significant validation accuracy improvements
+- Dramatically improve training efficiency
+- Make substantial impact on model performance
 
-5. **Fine-tuning Analysis**:
-   - Examine unfreeze_percent effectiveness
-   - Evaluate dual-stage training performance
-   - Check if fine-tuning improves or hurts performance
-
-SPECIFIC PARAMETERS TO EVALUATE:
-- batch_size (current: look in config)
-- initial_learning_rate (current: look in config)
-- initial_epochs (current: look in config)
-- fine_tune_learning_rate (current: look in config)
-- fine_tune_epochs (current: look in config)
-- unfreeze_percent (current: look in config)
-- image_size (current: look in config)
-- base_model_name (current: look in config)
-
-OPTIMIZATION GOALS:
-- Improve final validation accuracy
-- Reduce training time while maintaining quality
-- Enhance model generalization
-- Stabilize training convergence
-- Optimize memory usage efficiency
-
-Focus on actionable, specific parameter changes with clear reasoning based on the training metrics provided.
+Focus on high-impact changes with clear reasoning for substantial improvements.
 """
 
 def get_hyperparameter_prompt(dataset_info, current_config):
@@ -444,16 +216,19 @@ def get_hyperparameter_prompt(dataset_info, current_config):
     )
 
 def get_dataset_analysis_prompt(dataset_details):
-    """Generate prompt for dataset analysis."""
-    return DATASET_ANALYSIS_PROMPT.format(dataset_details=dataset_details)
+    """Generate basic prompt for dataset analysis focused on hyperparameter selection."""
+    return f"""Analyze this dataset for hyperparameter optimization:
 
-def get_error_analysis_prompt(training_history, performance_metrics, previous_config):
-    """Generate prompt for training error analysis."""
-    return ERROR_ANALYSIS_PROMPT.format(
-        training_history=training_history,
-        performance_metrics=performance_metrics,
-        previous_config=previous_config
-    )
+Dataset Details:
+{dataset_details}
+
+Focus on aspects that affect hyperparameter selection:
+1. Dataset size and its impact on batch size and learning rate
+2. Image dimensions and their impact on optimal input size
+3. Class distribution and its impact on training approach
+4. Dataset complexity and its impact on model architecture choice
+
+Provide insights that will help optimize hyperparameters, image size, and model architecture."""
 
 def get_optimization_prompt(training_log, current_config):
     """Generate prompt for training optimization."""

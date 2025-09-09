@@ -26,6 +26,21 @@ class TrainingLog:
         if ai_recommendations:
             entry["ai_advisor"] = ai_recommendations
             
+            # Add a summary of changes for easy access
+            if "applied_changes" in ai_recommendations:
+                applied_changes = ai_recommendations["applied_changes"]
+                entry["ai_changes_summary"] = {
+                    "total_changes": len(applied_changes),
+                    "changes": {
+                        param: {
+                            "from": change.get("original"),
+                            "to": change.get("applied"),
+                            "reasoning": change.get("reasoning", "No reasoning provided")
+                        }
+                        for param, change in applied_changes.items()
+                    }
+                }
+            
         # Add optimization iteration info if provided
         if optimization_iteration is not None:
             entry["optimization_iteration"] = optimization_iteration
@@ -50,6 +65,21 @@ class TrainingLog:
         # Add AI recommendations if provided
         if ai_recommendations:
             entry["ai_advisor"] = ai_recommendations
+            
+            # Add a summary of changes for easy access
+            if "applied_changes" in ai_recommendations:
+                applied_changes = ai_recommendations["applied_changes"]
+                entry["ai_changes_summary"] = {
+                    "total_changes": len(applied_changes),
+                    "changes": {
+                        param: {
+                            "from": change.get("original"),
+                            "to": change.get("applied"),
+                            "reasoning": change.get("reasoning", "No reasoning provided")
+                        }
+                        for param, change in applied_changes.items()
+                    }
+                }
             
         # Add optimization iteration info if provided
         if optimization_iteration is not None:
@@ -97,8 +127,10 @@ class TrainingLog:
         if pretty:
             return json.dumps(serializable_log, indent=4)
         return json.dumps(serializable_log)
+    
     def show(self):
         print(self.json(pretty=True))
+    
     def save(self, filepath=f'training_log.json'):
         with open(filepath, 'w') as f:
             f.write(self.json())
