@@ -423,6 +423,34 @@ class TrainingAdvisor:
                             logger.error(f"Error: {e}")
                     else:
                         logger.warning("No valid image_size value extracted from AI recommendations")
+                
+                if "dual_stage" in config:
+                    value = self._extract_value(config["dual_stage"])
+                    logger.info(f"Raw dual_stage from AI: {config['dual_stage']}")
+                    logger.info(f"Extracted dual_stage value: {value} (type: {type(value)})")
+
+                    # Ensure dual_stage is a valid boolean
+                    if value is not None:
+                        try:
+                            if isinstance(value, bool):
+                                trainer.dual_stage = value
+                                logger.info(f"Updated dual_stage to: {trainer.dual_stage}")
+                            elif isinstance(value, str):
+                                # Handle string representations of boolean
+                                if value.lower() in ['true', '1', 'yes']:
+                                    trainer.dual_stage = True
+                                elif value.lower() in ['false', '0', 'no']:
+                                    trainer.dual_stage = False
+                                else:
+                                    logger.warning(f"Invalid dual_stage string value: {value}, keeping original value")
+                                logger.info(f"Updated dual_stage to: {trainer.dual_stage}")
+                            else:
+                                logger.warning(f"Invalid dual_stage type: {type(value)}, expected boolean")
+                        except (ValueError, TypeError) as e:
+                            logger.error(f"Invalid dual_stage value: {value}, keeping original value")
+                            logger.error(f"Error: {e}")
+                    else:
+                        logger.warning("No valid dual_stage value extracted from AI recommendations")
             
             # Apply fine-tuning config
             if "fine_tuning_config" in params:

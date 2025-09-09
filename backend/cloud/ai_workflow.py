@@ -269,6 +269,7 @@ class AIWorkflowManager:
             "fine_tune_epochs": "fine_tune_epochs",
             "unfreeze_percent": "unfreeze_percent",
             "image_size": "custom_img_size",
+            "dual_stage": "dual_stage",
             "base_model": "base_model_name",
             "base_model_name": "base_model_name"
         }

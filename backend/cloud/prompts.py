@@ -77,6 +77,10 @@ Respond with the following JSON structure exactly as shown:
       "image_size": {{
         "value": ["integer_width", "integer_height"],
         "reasoning": "explanation"
+      }},
+      "dual_stage": {{
+        "value": "boolean_true_or_false",
+        "reasoning": "explanation"
       }}
     }},
     "fine_tuning_config": {{
@@ -101,8 +105,8 @@ OPTIMIZATION_SYSTEM_PROMPT = """You are an expert machine learning engineer spec
 Analyze training logs and make SUBSTANTIAL changes that will have significant impact on model performance.
 
 ESCALATION ORDER - Apply changes in this priority:
-1. **HYPERPARAMETERS** (Primary): learning_rates, batch_size, epochs, unfreeze_percent, image_size
-3. **ARCHITECTURE** (Last resort): Change base_model when hyperparameters aren't sufficient
+1. **HYPERPARAMETERS** (Primary): learning_rates, batch_size, epochs, unfreeze_percent, image_size, dual_stage
+2. **ARCHITECTURE** (Last resort): Change base_model when hyperparameters aren't sufficient
 
 MAKE BOLD CHANGES:
 - Don't suggest minor tweaks - recommend changes that will meaningfully impact training
@@ -138,6 +142,10 @@ RESPONSE FORMAT - Valid JSON only:
             "image_size": {
                 "recommended_value": ["width", "height"],
                 "reasoning": "explanation"
+            },
+            "dual_stage": {
+                "recommended_value": "boolean_value",
+                "reasoning": "explanation"
             }
         },
         "fine_tuning_config": {
@@ -169,6 +177,7 @@ PARAMETER TYPES:
 - epochs: integer (positive values)
 - image_size: [width, height] integers (square or rectangular)
 - unfreeze_percent: float 0.0-1.0 (percentage as decimal)
+- dual_stage: boolean (true for dual-stage, false for single-stage)
 - base_model_name: string (EfficientNet family)
 
 Only recommend changes needed for optimization."""
@@ -189,6 +198,7 @@ ESCALATION ANALYSIS (in priority order):
    - Epochs: Substantial increases/decreases if under/overfitting detected
    - Unfreeze percent: Bold adjustments if fine-tuning issues identified
    - Image size: Optimize input dimensions for model and dataset
+   - Dual stage: Switch between single-stage and dual-stage training approaches based on dataset size and complexity
 
 2. **ARCHITECTURE LAST**: 
    - Only if hyperparameters insufficient
