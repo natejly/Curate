@@ -18,6 +18,18 @@ openai>=1.0.0
 
 # Vector database for RAG
 pinecone
+
+# LangChain for enhanced RAG and AI workflows
+langchain>=0.3.27
+langchain-core>=0.3.76
+langchain-openai>=0.3.33
+langchain-pinecone>=0.2.12
+langchain-community>=0.3.29
+langchain-text-splitters>=0.3.11
+
+# LangChain dependencies
+tiktoken>=0.11.0
+langsmith>=0.4.27
 # Development and utilities
 pathlib2>=2.3.0; python_version<"3.4"
 

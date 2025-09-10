@@ -1,6 +1,6 @@
 """
-AI Advisor for hyperparameter optimization using OpenAI API
-Analyzes dataset characteristics and generates optimized training configurations
+LangChain + Pinecone RAG Advisor for hyperparameter optimization.
+Preserves the TrainingAdvisor API used by the workflow while switching to LangChain chains.
 """
 
 import json
@@ -9,26 +9,28 @@ import os
 from datetime import datetime
 from typing import Dict, Any, Optional, List
 
+# LangChain / Pinecone
+from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+from langchain_pinecone import PineconeVectorStore
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import JsonOutputParser
+from langchain_core.runnables import RunnablePassthrough
 try:
-    import openai
-except ImportError:
-    openai = None
+    # Prefer new location
+    from langchain_core.documents import Document
+except Exception:  # fallback for older versions
+    from langchain.schema import Document
 
-try:
-    from pinecone import Pinecone
-except ImportError:
-    Pinecone = None
-
+# Prompts (simplified, rely on RAG)
 from prompts import (
     HYPERPARAMETER_ADVISOR_SYSTEM_PROMPT,
     get_hyperparameter_prompt,
     OPTIMIZATION_SYSTEM_PROMPT,
-    get_optimization_prompt
+    get_optimization_prompt,
 )
 
 # Import the LLM logger
 import sys
-import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from logger import setup_llm_logger
 
@@ -36,117 +38,88 @@ logger = logging.getLogger(__name__)
 
 
 class TrainingAdvisor:
-    """AI-powered training advisor for hyperparameter optimization."""
-    
+    """AI-powered training advisor using LangChain RAG."""
+
     def __init__(self, api_key: Optional[str] = None, model: str = "gpt-4o-mini", session_id: Optional[str] = None):
-        """
-        Initialize the training advisor.
-        
-        Args:
-            api_key: OpenAI API key (if None, will try to get from environment)
-            model: OpenAI model to use for analysis
-            session_id: Session ID for logging purposes
-        """
-        if openai is None:
-            raise ImportError("OpenAI package not installed. Run: pip install openai")
-            
-        self.api_key = api_key or os.getenv('OPENAI_API_KEY')
+        self.api_key = api_key or os.getenv("OPENAI_API_KEY")
         if not self.api_key:
-            raise ValueError("OpenAI API key not provided. Set OPENAI_API_KEY environment variable or pass api_key parameter.")
-            
+            raise ValueError("OPENAI_API_KEY not set")
+
         self.model = model
         self.session_id = session_id
-        self.client = openai.OpenAI(api_key=self.api_key)
-        
-        # Setup LLM debugging logger
         self.llm_logger = setup_llm_logger(session_id=session_id)
-        
-        # Initialize Pinecone for RAG
-        self.pinecone_client = None
-        self.pinecone_index = None
-        self._init_pinecone()
-    
-    def _init_pinecone(self):
-        """Initialize Pinecone client and index for RAG."""
-        try:
-            if Pinecone is None:
-                self.llm_logger.warning("Pinecone not available - RAG features disabled")
-                return
-                
-            pinecone_api_key = os.getenv('PINECONE_API_KEY')
-            pinecone_environment = os.getenv('PINECONE_ENVIRONMENT', 'us-east-1')
-            pinecone_index_name = os.getenv('PINECONE_INDEX_NAME', 'ml-training-knowledge')
-            
-            if not pinecone_api_key:
-                self.llm_logger.warning("PINECONE_API_KEY not found - RAG features disabled")
-                return
-                
-            # Initialize Pinecone client
-            self.pinecone_client = Pinecone(api_key=pinecone_api_key)
-            
-            # Connect to index
-            if pinecone_index_name in [index.name for index in self.pinecone_client.list_indexes()]:
-                self.pinecone_index = self.pinecone_client.Index(pinecone_index_name)
-                self.llm_logger.info(f"Successfully connected to Pinecone index: {pinecone_index_name}")
-            else:
-                self.llm_logger.warning(f"Pinecone index '{pinecone_index_name}' not found - RAG features disabled")
-                
-        except Exception as e:
-            self.llm_logger.error(f"Failed to initialize Pinecone: {str(e)}")
-            self.pinecone_client = None
-            self.pinecone_index = None
-    
-    def _get_embeddings(self, text: str) -> List[float]:
-        """Get embeddings for text using OpenAI."""
-        try:
-            response = self.client.embeddings.create(
-                model="text-embedding-3-small",
-                input=text,
-                dimensions=512  # Use 512 dimensions to match Pinecone index
+
+        # LLM and embeddings
+        self.llm = ChatOpenAI(model=self.model, temperature=0.2, api_key=self.api_key)
+        self.embeddings = OpenAIEmbeddings(model="text-embedding-3-small", dimensions=512, api_key=self.api_key)
+
+        # Vector store / retriever (Pinecone)
+        knowledge_index_name = os.getenv("PINECONE_KNOWLEDGE_INDEX_NAME", "curate-knowledge")
+        pinecone_api_key = os.getenv("PINECONE_API_KEY")
+        if not pinecone_api_key:
+            self.llm_logger.warning("PINECONE_API_KEY not found - RAG disabled")
+            self.vector_store = None
+            self.retriever = None
+        else:
+            self.vector_store = PineconeVectorStore(
+                index_name=knowledge_index_name,
+                embedding=self.embeddings,
+                pinecone_api_key=pinecone_api_key,
             )
-            return response.data[0].embedding
-        except Exception as e:
-            self.llm_logger.error(f"Failed to get embeddings: {str(e)}")
-            return []
-    
-    def _query_pinecone(self, query_text: str, top_k: int = 5) -> List[str]:
-        """Query Pinecone for relevant context."""
-        try:
-            if not self.pinecone_index:
-                return []
-                
-            # Get query embeddings
-            query_embedding = self._get_embeddings(query_text)
-            if not query_embedding:
-                return []
-                
-            # Query Pinecone
-            results = self.pinecone_index.query(
-                vector=query_embedding,
-                top_k=top_k,
-                include_metadata=True
-            )
-            
-            # Extract context from results
-            contexts = []
-            for match in results.matches:
-                if 'text' in match.metadata:
-                    contexts.append(match.metadata['text'])
-                elif 'content' in match.metadata:
-                    contexts.append(match.metadata['content'])
-                    
-            self.llm_logger.info(f"Retrieved {len(contexts)} context chunks from Pinecone")
-            return contexts
-            
-        except Exception as e:
-            self.llm_logger.error(f"Failed to query Pinecone: {str(e)}")
-            return []
-        
-        # Initialize Pinecone for RAG
-        self.pinecone_client = None
-        self.pinecone_index = None
-        self._init_pinecone()
-    
+            self.retriever = self.vector_store.as_retriever(search_kwargs={"k": 5})
+
+        # Chains
+        self._setup_chains()
+
+    # ---------- Chain setup ----------
+    def _format_docs(self, docs: List[Document]) -> str:
+        parts = []
+        for d in docs:
+            meta = d.metadata or {}
+            category = meta.get("category", "general")
+            topic = meta.get("topic", "unknown")
+            parts.append(f"[{category}/{topic}] {d.page_content}")
+        return "\n\n".join(parts)
+
+    def _setup_chains(self) -> None:
+        parser = JsonOutputParser()
+
+        # Hyperparameter chain
+        hyper_prompt = ChatPromptTemplate.from_messages([
+            ("system", HYPERPARAMETER_ADVISOR_SYSTEM_PROMPT + "\n\nUse this context when relevant:\n{context}"),
+            ("human", "{user_prompt}")
+        ])
+
+        # If retriever is unavailable, provide empty context
+        context_source = (self.retriever | self._format_docs) if self.retriever else (lambda _: "")
+
+        self.hyperparam_chain = (
+            {
+                "context": context_source,
+                "user_prompt": RunnablePassthrough(),
+            }
+            | hyper_prompt
+            | self.llm
+            | parser
+        )
+
+        # Optimization chain
+        opt_prompt = ChatPromptTemplate.from_messages([
+            ("system", OPTIMIZATION_SYSTEM_PROMPT + "\n\nUse this context when relevant:\n{context}"),
+            ("human", "{user_prompt}")
+        ])
+
+        self.optimization_chain = (
+            {
+                "context": context_source,
+                "user_prompt": RunnablePassthrough(),
+            }
+            | opt_prompt
+            | self.llm
+            | parser
+        )
+
+    # ---------- Helpers ----------
     def _extract_value(self, param_dict: Dict[str, Any]):
         """
         Extract value from AI recommendation parameter dictionary.
@@ -265,82 +238,21 @@ class TrainingAdvisor:
             logger.error(f"Failed to extract current config: {str(e)}")
             return {"error": str(e)}
     
-    def call_openai_api(self, system_prompt: str, user_prompt: str, use_rag: bool = True) -> Optional[Dict[str, Any]]:
-        """
-        Make API call to OpenAI with optional RAG enhancement.
-        
-        Args:
-            system_prompt: System prompt for the AI
-            user_prompt: User prompt with specific request
-            use_rag: Whether to use Pinecone RAG for additional context
-            
-        Returns:
-            Parsed JSON response or None if failed
-        """
+    # ---------- RAG-powered tasks ----------
+    def _invoke_hyperparams_chain(self, user_prompt: str) -> Optional[Dict[str, Any]]:
         try:
-            # Enhance prompts with RAG if available
-            enhanced_system_prompt = system_prompt
-            enhanced_user_prompt = user_prompt
-            
-            if use_rag and self.pinecone_index:
-                self.llm_logger.info("Querying Pinecone for relevant context...")
-                
-                # Create a query from the user prompt for context retrieval
-                query_text = f"{user_prompt[:500]}..."  # Use first 500 chars as query
-                contexts = self._query_pinecone(query_text, top_k=3)
-                
-                if contexts:
-                    # Add retrieved context to the system prompt
-                    context_section = "\n\n--- RELEVANT KNOWLEDGE BASE CONTEXT ---\n"
-                    context_section += "\n\n".join([f"Context {i+1}:\n{ctx}" for i, ctx in enumerate(contexts)])
-                    context_section += "\n--- END CONTEXT ---\n\n"
-                    context_section += "Use the above context to inform your recommendations when relevant. "
-                    context_section += "Prioritize context-based insights but don't limit yourself to only the provided context."
-                    
-                    enhanced_system_prompt = system_prompt + context_section
-                    
-                    self.llm_logger.info(f"Enhanced prompt with {len(contexts)} context chunks")
-                else:
-                    self.llm_logger.info("No relevant context found in Pinecone")
-            elif use_rag:
-                self.llm_logger.info("RAG requested but Pinecone not available")
-            
-            # Log the API call
-            self.llm_logger.info("Making OpenAI API call...")
-            self.llm_logger.debug(f"System prompt length: {len(enhanced_system_prompt)} chars")
-            self.llm_logger.debug(f"User prompt length: {len(enhanced_user_prompt)} chars")
-            
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": enhanced_system_prompt},
-                    {"role": "user", "content": enhanced_user_prompt}
-                ],
-                temperature=0.3,  # Lower temperature for more consistent responses
-                max_tokens=4000,
-                response_format={"type": "json_object"}  # Ensure JSON response
-            )
-            content = response.choices[0].message.content
-            
-            # Log the response
-            self.llm_logger.info("Received OpenAI response")
-            self.llm_logger.debug(f"Response content: {content}")
-            
-            content = content.strip()
-            if content.count('{') != content.count('}'):
-                self.llm_logger.error("PARSING ERROR: Unbalanced braces in JSON response")
-                return None
-            parsed_response = json.loads(content)
-            
-            self.llm_logger.info("Successfully parsed JSON response")
-            return parsed_response
-            
-        except json.JSONDecodeError as e:
-            self.llm_logger.error(f"JSON Decode Error: {str(e)}")
-            self.llm_logger.error(f"Response content: {content}")
-            return None
+            self.llm_logger.info("Invoking LangChain hyperparameter chain with RAG context")
+            return self.hyperparam_chain.invoke(user_prompt)
         except Exception as e:
-            self.llm_logger.error(f"OpenAI API call failed: {str(e)}")
+            self.llm_logger.error(f"LangChain hyperparam chain failed: {str(e)}")
+            return None
+
+    def _invoke_optimization_chain(self, user_prompt: str) -> Optional[Dict[str, Any]]:
+        try:
+            self.llm_logger.info("Invoking LangChain optimization chain with RAG context")
+            return self.optimization_chain.invoke(user_prompt)
+        except Exception as e:
+            self.llm_logger.error(f"LangChain optimization chain failed: {str(e)}")
             return None
             
     
@@ -377,18 +289,14 @@ class TrainingAdvisor:
         logger.info("Extracting dataset information for AI analysis...")
         dataset_info = self.extract_dataset_info(data_parser, trainer)
         current_config = self.get_current_config(trainer)
-        
-        logger.info("Calling OpenAI API for hyperparameter recommendations...")
+
+        logger.info("Calling LangChain RAG for hyperparameter recommendations...")
         user_prompt = get_hyperparameter_prompt(
             json.dumps(dataset_info, indent=2),
-            json.dumps(current_config, indent=2)
+            json.dumps(current_config, indent=2),
         )
-        
-        recommendations = self.call_openai_api(
-            HYPERPARAMETER_ADVISOR_SYSTEM_PROMPT,
-            user_prompt,
-            use_rag=True  # Enable RAG for hyperparameter recommendations
-        )
+
+        recommendations = self._invoke_hyperparams_chain(user_prompt)
         
         if recommendations:
             logger.info("Successfully received AI recommendations")
@@ -595,18 +503,13 @@ class TrainingAdvisor:
             
             logger.info("Analyzing training performance for optimization...")
             
-            # Create optimization prompt
+            # Create optimization prompt and invoke chain
             optimization_prompt = get_optimization_prompt(
                 json.dumps(training_log, indent=2),
-                json.dumps(current_config, indent=2)
+                json.dumps(current_config, indent=2),
             )
-            
-            # Get optimization recommendations from AI with enhanced validation
-            recommendations = self.call_openai_api(
-                OPTIMIZATION_SYSTEM_PROMPT, 
-                optimization_prompt,
-                use_rag=True  # Enable RAG for optimization recommendations
-            )
+
+            recommendations = self._invoke_optimization_chain(optimization_prompt)
             
             if recommendations:
                 logger.info("Successfully received optimization recommendations")

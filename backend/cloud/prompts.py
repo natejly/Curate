@@ -1,24 +1,20 @@
 """
-Streamlined AI Advisor prompts for hyperparameter optimization.
-Focused on hyperparameters, image size, and model architecture only.
+Simplified AI Advisor prompts that rely on RAG for context.
+Knowledge is retrieved from Pinecone and injected into prompts.
 """
 
+# Simplified system prompt that relies on RAG context
 HYPERPARAMETER_ADVISOR_SYSTEM_PROMPT = """
 You are an expert machine learning engineer specializing in computer vision and transfer learning optimization.
 
 Your task is to analyze dataset characteristics and recommend optimal hyperparameters for training image classification models.
 
-Key areas of expertise:
-- Transfer learning with pre-trained models (EfficientNet)
-- Learning rate optimization for initial training and fine-tuning
-- Batch size optimization based on dataset size and complexity
-- Training duration and epoch recommendations
-- Image size selection for optimal performance
-- Model architecture selection
+You will be provided with relevant knowledge context to inform your recommendations.
 
 You must provide responses in valid JSON format only, with detailed reasoning for each recommendation.
 """
 
+# Simplified hyperparameter request template
 HYPERPARAMETER_REQUEST_TEMPLATE = """
 Analyze the following dataset characteristics and provide optimized hyperparameters for image classification training:
 
@@ -34,11 +30,7 @@ Requirements:
 3. Provide reasoning for each recommendation
 4. Choose between single-stage or dual-stage training approach
 
-TRAINING APPROACHES EXPLAINED:
-- **Single-stage training**: Trains the entire model from the start with unfrozen layers. Good for larger datasets where you want immediate feature adaptation.
-- **Dual-stage training**: First trains only the top layers (feature extractor frozen), then unfreezes a percentage of layers for fine-tuning. Better for smaller datasets or when transfer learning benefits are important.
-
-IMPORTANT:
+IMPORTANT JSON FORMAT REQUIREMENTS:
 1. Use exactly the key "value" (not "recommended_value" or any other variant) for all parameter values.
 2. Return values in their proper data types:
    - batch_size: integer (e.g., 64, not "64")
@@ -101,88 +93,19 @@ Respond with the following JSON structure exactly as shown:
 }}
 """
 
+# Simplified optimization system prompt
 OPTIMIZATION_SYSTEM_PROMPT = """You are an expert machine learning engineer specializing in training optimization. 
+
 Analyze training logs and make SUBSTANTIAL changes that will have significant impact on model performance.
 
-ESCALATION ORDER - Apply changes in this priority:
-1. **HYPERPARAMETERS** (Primary): learning_rates, batch_size, epochs, unfreeze_percent, image_size, dual_stage
-2. **ARCHITECTURE** (RARELY): Change base_model ONLY after exhausting hyperparameter options AND only if performance is severely inadequate
+You will be provided with relevant knowledge context to guide your optimization decisions.
 
-HYPERPARAMETER-FIRST APPROACH:
-- ALWAYS try hyperparameter adjustments before considering architecture changes
-- Make substantial hyperparameter changes that will meaningfully impact training
-- If learning rate is causing issues, make significant adjustments (order of magnitude changes, not small increments)  
-- If batch size is suboptimal, recommend substantial changes based on dataset size and memory constraints
-- Architecture changes should be EXTREMELY RARE - only when hyperparameters cannot solve fundamental capacity issues
+Your goal is to make hyperparameter adjustments that will meaningfully improve training performance.
 
-TRAINING APPROACHES:
-- Single-stage (dual_stage=false): Trains entire model with unfrozen layers. Good for larger datasets.
-- Dual-stage (dual_stage=true): First trains top layers, then fine-tunes. Better for smaller datasets.
+Respond with valid JSON only using the specified format.
+"""
 
-RESPONSE FORMAT - Valid JSON only:
-{
-    "analysis": {
-        "performance_assessment": "brief assessment",
-        "identified_issues": ["specific issues"],
-        "recommended_approach": "single_stage|dual_stage"
-    },
-    "optimization_recommendations": {
-        "training_config": {
-            "batch_size": {
-                "recommended_value": "integer_value",
-                "reasoning": "explanation"
-            },
-            "initial_learning_rate": {
-                "recommended_value": "float_value",
-                "reasoning": "explanation"
-            },
-            "initial_epochs": {
-                "recommended_value": "integer_value",
-                "reasoning": "explanation"
-            },
-            "image_size": {
-                "recommended_value": ["width", "height"],
-                "reasoning": "explanation"
-            },
-            "dual_stage": {
-                "recommended_value": "boolean_value",
-                "reasoning": "explanation"
-            }
-        },
-        "fine_tuning_config": {
-            "fine_tune_learning_rate": {
-                "recommended_value": "float_value",
-                "reasoning": "explanation"
-            },
-            "fine_tune_epochs": {
-                "recommended_value": "integer_value",
-                "reasoning": "explanation"
-            },
-            "unfreeze_percent": {
-                "recommended_value": "float_value",
-                "reasoning": "explanation"
-            }
-        },
-        "model_architecture": {
-            "base_model_name": {
-                "recommended_value": "string_model_name",
-                "reasoning": "explanation - ONLY recommend if hyperparameters cannot solve fundamental capacity issues"
-            }
-        }
-    }
-}
-
-PARAMETER TYPES:
-- batch_size: integer (power of 2 values)
-- learning_rates: float (scientific notation format)  
-- epochs: integer (positive values)
-- image_size: [width, height] integers (square or rectangular)
-- unfreeze_percent: float 0.0-1.0 (percentage as decimal)
-- dual_stage: boolean (true for dual-stage, false for single-stage)
-- base_model_name: string (EfficientNet family)
-
-Only recommend changes needed for optimization."""
-
+# Simplified optimization request template
 OPTIMIZATION_REQUEST_TEMPLATE = """
 Analyze training results and make SUBSTANTIAL optimizations that will significantly impact performance:
 
@@ -192,38 +115,74 @@ CURRENT CONFIG:
 TRAINING DATA:
 {training_log}
 
-ESCALATION ANALYSIS (in priority order):
-1. **HYPERPARAMETERS FIRST**: 
-   - Learning rates: If problematic, make order-of-magnitude adjustments
-   - Batch size: Make significant changes based on dataset size and memory constraints
-   - Epochs: Substantial increases/decreases if under/overfitting detected
-   - Unfreeze percent: Bold adjustments if fine-tuning issues identified
-   - Image size: Optimize input dimensions for model and dataset
-   - Dual stage: Switch between single-stage and dual-stage training approaches based on dataset size and complexity
-
-2. **ARCHITECTURE** (AVOID UNLESS CRITICAL): 
-   - DO NOT change architecture unless hyperparameters have been thoroughly optimized first
-   - Only consider architecture changes if current model has fundamental capacity limitations
-   - Must provide strong evidence that hyperparameter optimization cannot solve the performance issues
-
-IMPACT REQUIREMENTS:
-- Make changes that will create measurable performance differences
+REQUIREMENTS:
+- Focus on hyperparameter optimization first
+- Make substantial changes that will create measurable performance differences
 - Avoid minor tweaks - recommend bold adjustments
-- Prioritize changes with highest expected impact
-- Explain why each change will substantially improve training
+- Provide clear reasoning for each optimization
+- Only recommend architecture changes if absolutely necessary with strong justification
 
-ARCHITECTURE CHANGE RESTRICTIONS:
-- DO NOT recommend architecture changes unless absolutely necessary
-- Hyperparameter optimization should solve 95% of performance issues
-- Only change base_model if there's clear evidence of fundamental model capacity limitations
-- Provide compelling justification if architecture change is truly required
+RESPONSE FORMAT - Valid JSON only:
+{{
+    "analysis": {{
+        "performance_assessment": "brief assessment",
+        "identified_issues": ["specific issues"],
+        "recommended_approach": "single_stage|dual_stage"
+    }},
+    "optimization_recommendations": {{
+        "training_config": {{
+            "batch_size": {{
+                "recommended_value": "integer_value",
+                "reasoning": "explanation"
+            }},
+            "initial_learning_rate": {{
+                "recommended_value": "float_value",
+                "reasoning": "explanation"
+            }},
+            "initial_epochs": {{
+                "recommended_value": "integer_value",
+                "reasoning": "explanation"
+            }},
+            "image_size": {{
+                "recommended_value": ["width", "height"],
+                "reasoning": "explanation"
+            }},
+            "dual_stage": {{
+                "recommended_value": "boolean_value",
+                "reasoning": "explanation"
+            }}
+        }},
+        "fine_tuning_config": {{
+            "fine_tune_learning_rate": {{
+                "recommended_value": "float_value",
+                "reasoning": "explanation"
+            }},
+            "fine_tune_epochs": {{
+                "recommended_value": "integer_value",
+                "reasoning": "explanation"
+            }},
+            "unfreeze_percent": {{
+                "recommended_value": "float_value",
+                "reasoning": "explanation"
+            }}
+        }},
+        "model_architecture": {{
+            "base_model_name": {{
+                "recommended_value": "string_model_name",
+                "reasoning": "explanation - ONLY recommend if hyperparameters cannot solve fundamental capacity issues"
+            }}
+        }}
+    }}
+}}
 
-GOALS:
-- Achieve significant validation accuracy improvements through hyperparameter optimization
-- Dramatically improve training efficiency via learning rates, batch sizes, and training approach
-- Make substantial impact on model performance WITHOUT changing architecture
-
-Focus on hyperparameter changes with clear reasoning. Architecture changes require exceptional justification.
+PARAMETER TYPES:
+- batch_size: integer (power of 2 values)
+- learning_rates: float (scientific notation format)  
+- epochs: integer (positive values)
+- image_size: [width, height] integers (square or rectangular)
+- unfreeze_percent: float 0.0-1.0 (percentage as decimal)
+- dual_stage: boolean (true for dual-stage, false for single-stage)
+- base_model_name: string (EfficientNet family)
 """
 
 def get_hyperparameter_prompt(dataset_info, current_config):
