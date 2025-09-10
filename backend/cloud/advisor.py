@@ -7,12 +7,17 @@ import json
 import logging
 import os
 from datetime import datetime
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 
 try:
     import openai
 except ImportError:
     openai = None
+
+try:
+    from pinecone import Pinecone
+except ImportError:
+    Pinecone = None
 
 from prompts import (
     HYPERPARAMETER_ADVISOR_SYSTEM_PROMPT,
@@ -55,6 +60,92 @@ class TrainingAdvisor:
         
         # Setup LLM debugging logger
         self.llm_logger = setup_llm_logger(session_id=session_id)
+        
+        # Initialize Pinecone for RAG
+        self.pinecone_client = None
+        self.pinecone_index = None
+        self._init_pinecone()
+    
+    def _init_pinecone(self):
+        """Initialize Pinecone client and index for RAG."""
+        try:
+            if Pinecone is None:
+                self.llm_logger.warning("Pinecone not available - RAG features disabled")
+                return
+                
+            pinecone_api_key = os.getenv('PINECONE_API_KEY')
+            pinecone_environment = os.getenv('PINECONE_ENVIRONMENT', 'us-east-1')
+            pinecone_index_name = os.getenv('PINECONE_INDEX_NAME', 'ml-training-knowledge')
+            
+            if not pinecone_api_key:
+                self.llm_logger.warning("PINECONE_API_KEY not found - RAG features disabled")
+                return
+                
+            # Initialize Pinecone client
+            self.pinecone_client = Pinecone(api_key=pinecone_api_key)
+            
+            # Connect to index
+            if pinecone_index_name in [index.name for index in self.pinecone_client.list_indexes()]:
+                self.pinecone_index = self.pinecone_client.Index(pinecone_index_name)
+                self.llm_logger.info(f"Successfully connected to Pinecone index: {pinecone_index_name}")
+            else:
+                self.llm_logger.warning(f"Pinecone index '{pinecone_index_name}' not found - RAG features disabled")
+                
+        except Exception as e:
+            self.llm_logger.error(f"Failed to initialize Pinecone: {str(e)}")
+            self.pinecone_client = None
+            self.pinecone_index = None
+    
+    def _get_embeddings(self, text: str) -> List[float]:
+        """Get embeddings for text using OpenAI."""
+        try:
+            response = self.client.embeddings.create(
+                model="text-embedding-3-small",
+                input=text,
+                dimensions=512  # Use 512 dimensions to match Pinecone index
+            )
+            return response.data[0].embedding
+        except Exception as e:
+            self.llm_logger.error(f"Failed to get embeddings: {str(e)}")
+            return []
+    
+    def _query_pinecone(self, query_text: str, top_k: int = 5) -> List[str]:
+        """Query Pinecone for relevant context."""
+        try:
+            if not self.pinecone_index:
+                return []
+                
+            # Get query embeddings
+            query_embedding = self._get_embeddings(query_text)
+            if not query_embedding:
+                return []
+                
+            # Query Pinecone
+            results = self.pinecone_index.query(
+                vector=query_embedding,
+                top_k=top_k,
+                include_metadata=True
+            )
+            
+            # Extract context from results
+            contexts = []
+            for match in results.matches:
+                if 'text' in match.metadata:
+                    contexts.append(match.metadata['text'])
+                elif 'content' in match.metadata:
+                    contexts.append(match.metadata['content'])
+                    
+            self.llm_logger.info(f"Retrieved {len(contexts)} context chunks from Pinecone")
+            return contexts
+            
+        except Exception as e:
+            self.llm_logger.error(f"Failed to query Pinecone: {str(e)}")
+            return []
+        
+        # Initialize Pinecone for RAG
+        self.pinecone_client = None
+        self.pinecone_index = None
+        self._init_pinecone()
     
     def _extract_value(self, param_dict: Dict[str, Any]):
         """
@@ -174,25 +265,56 @@ class TrainingAdvisor:
             logger.error(f"Failed to extract current config: {str(e)}")
             return {"error": str(e)}
     
-    def call_openai_api(self, system_prompt: str, user_prompt: str) -> Optional[Dict[str, Any]]:
+    def call_openai_api(self, system_prompt: str, user_prompt: str, use_rag: bool = True) -> Optional[Dict[str, Any]]:
         """
-        Make API call to OpenAI and parse JSON response.
+        Make API call to OpenAI with optional RAG enhancement.
         
         Args:
             system_prompt: System prompt for the AI
             user_prompt: User prompt with specific request
+            use_rag: Whether to use Pinecone RAG for additional context
             
         Returns:
             Parsed JSON response or None if failed
         """
         try:
-
+            # Enhance prompts with RAG if available
+            enhanced_system_prompt = system_prompt
+            enhanced_user_prompt = user_prompt
+            
+            if use_rag and self.pinecone_index:
+                self.llm_logger.info("Querying Pinecone for relevant context...")
+                
+                # Create a query from the user prompt for context retrieval
+                query_text = f"{user_prompt[:500]}..."  # Use first 500 chars as query
+                contexts = self._query_pinecone(query_text, top_k=3)
+                
+                if contexts:
+                    # Add retrieved context to the system prompt
+                    context_section = "\n\n--- RELEVANT KNOWLEDGE BASE CONTEXT ---\n"
+                    context_section += "\n\n".join([f"Context {i+1}:\n{ctx}" for i, ctx in enumerate(contexts)])
+                    context_section += "\n--- END CONTEXT ---\n\n"
+                    context_section += "Use the above context to inform your recommendations when relevant. "
+                    context_section += "Prioritize context-based insights but don't limit yourself to only the provided context."
+                    
+                    enhanced_system_prompt = system_prompt + context_section
+                    
+                    self.llm_logger.info(f"Enhanced prompt with {len(contexts)} context chunks")
+                else:
+                    self.llm_logger.info("No relevant context found in Pinecone")
+            elif use_rag:
+                self.llm_logger.info("RAG requested but Pinecone not available")
+            
+            # Log the API call
+            self.llm_logger.info("Making OpenAI API call...")
+            self.llm_logger.debug(f"System prompt length: {len(enhanced_system_prompt)} chars")
+            self.llm_logger.debug(f"User prompt length: {len(enhanced_user_prompt)} chars")
             
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
+                    {"role": "system", "content": enhanced_system_prompt},
+                    {"role": "user", "content": enhanced_user_prompt}
                 ],
                 temperature=0.3,  # Lower temperature for more consistent responses
                 max_tokens=4000,
@@ -201,68 +323,27 @@ class TrainingAdvisor:
             
             content = response.choices[0].message.content
             
-            # Log the raw response
-            self.llm_logger.info("RAW LLM RESPONSE:")
-            self.llm_logger.info("-" * 40)
-            self.llm_logger.info(content[:2000] + "..." if len(content) > 2000 else content)
-            self.llm_logger.info("-" * 40)
+            # Log the response
+            self.llm_logger.info("Received OpenAI response")
+            self.llm_logger.debug(f"Response content: {content}")
             
-            # Log token usage if available
-            if hasattr(response, 'usage') and response.usage:
-                self.llm_logger.info("TOKEN USAGE:")
-                self.llm_logger.info(f"  Prompt tokens: {response.usage.prompt_tokens}")
-                self.llm_logger.info(f"  Completion tokens: {response.usage.completion_tokens}")
-                self.llm_logger.info(f"  Total tokens: {response.usage.total_tokens}")
-            
-            # Clean up any potential malformed content before parsing
             content = content.strip()
             if content.count('{') != content.count('}'):
                 self.llm_logger.error("PARSING ERROR: Unbalanced braces in JSON response")
                 return None
-            
-            # Check for repeated patterns that might indicate malformed response
-            if any(substring * 5 in content for substring in ["0.3", "0.0", "1.0", "64", "32"]):
-                self.llm_logger.error("PARSING ERROR: Detected repeated patterns in response, likely malformed")
-                self.llm_logger.error(f"Malformed content: {content[:200]}...")
-                return None
-            
             parsed_response = json.loads(content)
             
-            # Log the parsed response structure
-            self.llm_logger.info("PARSED RESPONSE STRUCTURE:")
-            self.llm_logger.info(f"  Top-level keys: {list(parsed_response.keys())}")
-            if isinstance(parsed_response, dict):
-                for key, value in parsed_response.items():
-                    if isinstance(value, dict):
-                        self.llm_logger.info(f"  {key} contains: {list(value.keys())}")
-                    elif isinstance(value, list):
-                        self.llm_logger.info(f"  {key} is list with {len(value)} items")
-                    else:
-                        self.llm_logger.info(f"  {key}: {type(value).__name__}")
-            
-            # Validate the structure and data types
-            if "optimization_recommendations" in parsed_response:
-                self._validate_optimization_response(parsed_response["optimization_recommendations"])
-                self.llm_logger.info("VALIDATION: Optimization response structure is valid")
-            
-            self.llm_logger.info("LLM API CALL COMPLETED SUCCESSFULLY")
-            self.llm_logger.info("=" * 80)
-            
+            self.llm_logger.info("Successfully parsed JSON response")
             return parsed_response
             
         except json.JSONDecodeError as e:
-            self.llm_logger.error(f"JSON PARSING ERROR: {str(e)}")
-            self.llm_logger.error(f"Raw response that failed to parse: {content}")
-            self.llm_logger.error("=" * 80)
-            logger.error(f"Failed to parse JSON response: {str(e)}")
-            logger.error(f"Raw response: {content}")
+            self.llm_logger.error(f"JSON Decode Error: {str(e)}")
+            self.llm_logger.error(f"Response content: {content}")
             return None
         except Exception as e:
-            self.llm_logger.error(f"LLM API CALL FAILED: {str(e)}")
-            self.llm_logger.error(f"Error type: {type(e).__name__}")
-            self.llm_logger.error("=" * 80)
-            logger.error(f"OpenAI API call failed: {str(e)}")
+            self.llm_logger.error(f"OpenAI API call failed: {str(e)}")
             return None
+            
     
     def _validate_optimization_response(self, recommendations: Dict[str, Any]) -> None:
         """Validate the structure and types of optimization recommendations."""
@@ -306,7 +387,8 @@ class TrainingAdvisor:
         
         recommendations = self.call_openai_api(
             HYPERPARAMETER_ADVISOR_SYSTEM_PROMPT,
-            user_prompt
+            user_prompt,
+            use_rag=True  # Enable RAG for hyperparameter recommendations
         )
         
         if recommendations:
@@ -521,7 +603,11 @@ class TrainingAdvisor:
             )
             
             # Get optimization recommendations from AI with enhanced validation
-            recommendations = self.call_openai_api(OPTIMIZATION_SYSTEM_PROMPT, optimization_prompt)
+            recommendations = self.call_openai_api(
+                OPTIMIZATION_SYSTEM_PROMPT, 
+                optimization_prompt,
+                use_rag=True  # Enable RAG for optimization recommendations
+            )
             
             if recommendations:
                 logger.info("Successfully received optimization recommendations")

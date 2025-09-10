@@ -1239,7 +1239,7 @@ async def upload_to_s3(session_id: str):
         # Start S3 upload subprocess
         try:
             import subprocess
-            uploader_script = Path(__file__).parent / "s3_uploader.py"
+            uploader_script = Path(__file__).parent / "s3_uploader_with_progress.py"
 
             # Create log file for subprocess output
             log_dir = Path(__file__).parent / "logs"
@@ -1278,6 +1278,31 @@ async def upload_to_s3(session_id: str):
     except Exception as e:
         print(f"Failed to upload to S3: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to upload to S3: {str(e)}")
+
+# Endpoint to get S3 upload progress
+@app.get("/upload-progress/{session_id}")
+async def get_upload_progress(session_id: str):
+    """Get the current S3 upload progress for a session."""
+    session_dir = TEMP_DIR / session_id
+    s3_status_path = session_dir / "s3_upload_status.json"
+    
+    if not s3_status_path.exists():
+        raise HTTPException(status_code=404, detail=f"No upload progress found for session: {session_id}")
+    
+    try:
+        with open(s3_status_path, 'r') as f:
+            status_data = json.load(f)
+        
+        return {
+            "session_id": session_id,
+            "status": status_data.get("s3_upload_status", "unknown"),
+            "message": status_data.get("message", ""),
+            "progress": status_data.get("progress", {}),
+            "s3_location": status_data.get("s3_location", ""),
+            "dataset_name": status_data.get("dataset_name", "")
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to read upload progress: {str(e)}")
 
 # Endpoint to check S3 upload status
 @app.get("/s3-upload-status/{session_id}")

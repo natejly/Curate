@@ -121,6 +121,52 @@ class AWSHelper:
         os.remove(zip_path)
         print(f"Removed local zip: {zip_path}")
 
+    def upload_zip_with_progress(self, folder_path, s3_prefix="", progress_callback=None):
+        """
+        Zip a local folder and upload with custom progress callback.
+        
+        :param folder_path: Local folder path (e.g., "data/")
+        :param s3_prefix: Prefix inside the bucket (e.g., "curate/train/")
+        :param progress_callback: Callback function to track upload progress
+        """
+        archive_name = os.path.basename(os.path.normpath(folder_path))
+        zip_path = f"{archive_name}.zip"
+
+        print(f"Zipping {folder_path} → {zip_path} ...")
+        start_zip = time.time()
+        shutil.make_archive(archive_name, "zip", folder_path)
+        zip_size = os.path.getsize(zip_path)
+        print(f"Zip complete in {time.time()-start_zip:.2f}s, size {zip_size/1e6:.2f} MB")
+
+        # Step 2: Upload the .zip file with progress callback
+        s3_key = os.path.join(s3_prefix, os.path.basename(zip_path)).replace("\\", "/")
+
+        print(f"Uploading archive to s3://{self.bucket}/{s3_key} ...")
+        self.s3_path = f"s3://{self.bucket}/{s3_key}"
+        start_upload = time.time()
+
+        config = TransferConfig(
+            multipart_threshold=8 * 1024 * 1024,   # 8 MB
+            multipart_chunksize=8 * 1024 * 1024,
+            max_concurrency=10,
+            use_threads=True
+        )
+
+        # Use custom progress callback if provided, otherwise use tqdm
+        if progress_callback:
+            self.s3_client.upload_file(zip_path, self.bucket, s3_key, Config=config,
+                Callback=progress_callback)
+        else:
+            with tqdm(total=zip_size, unit="B", unit_scale=True, desc="Uploading ZIP") as pbar:
+                self.s3_client.upload_file(zip_path, self.bucket, s3_key, Config=config,
+                    Callback=lambda bytes_transferred: pbar.update(bytes_transferred))
+
+        print(f"Upload complete in {time.time()-start_upload:.2f}s")
+
+        # (Optional) clean up local zip
+        os.remove(zip_path)
+        print(f"Removed local zip: {zip_path}")
+
     def upload_file(self, file_path, s3_key):
         """
         Upload a single file to S3.

@@ -91,17 +91,7 @@ export default function LiveMetrics({ sessionId, metricsData }: LiveMetricsProps
   React.useEffect(() => {
     if (!metricsData) return;
 
-    console.log('🔄 Received new metrics data:', {
-      sessionId: metricsData.session_id,
-      hasOptimizationIterations: !!metricsData.optimization_iterations,
-      optimizationIterationsCount: metricsData.optimization_iterations?.length || 0,
-      optimizationIterations: metricsData.optimization_iterations?.map(iter => ({
-        iteration: iter.iteration,
-        hasTestResults: !!iter.test_results,
-        testAccuracy: iter.test_results?.test_accuracy || iter.test_results?.accuracy,
-        testLoss: iter.test_results?.test_loss || iter.test_results?.loss
-      })) || []
-    });
+  // Debug log removed for clean UI
 
     setIterationHistory(prev => {
       const newHistory = { ...prev };
@@ -111,33 +101,21 @@ export default function LiveMetrics({ sessionId, metricsData }: LiveMetricsProps
       if (metricsData.final_test_results && !newHistory.originalResults) {
         newHistory.originalResults = metricsData.final_test_results;
         hasChanges = true;
-        console.log('📊 Saved original results:', metricsData.final_test_results);
       }
 
       // Add new optimization iterations (avoid duplicates)
       if (metricsData.optimization_iterations) {
         const existingIterationIds = new Set(newHistory.iterations.map(iter => iter.iteration));
-        
         metricsData.optimization_iterations.forEach(iter => {
           if (!existingIterationIds.has(iter.iteration)) {
             newHistory.iterations.push(iter);
             newHistory.iterations.sort((a, b) => a.iteration - b.iteration);
             hasChanges = true;
-            console.log(`✅ Added new optimization iteration ${iter.iteration}:`, {
-              testAccuracy: iter.test_results?.test_accuracy || iter.test_results?.accuracy,
-              testLoss: iter.test_results?.test_loss || iter.test_results?.loss
-            });
           }
         });
       }
 
-      if (hasChanges) {
-        console.log('📈 Updated iteration history:', {
-          originalResults: !!newHistory.originalResults,
-          iterationsCount: newHistory.iterations.length,
-          iterationNumbers: newHistory.iterations.map(i => i.iteration)
-        });
-      }
+  // No UI log for updated iteration history
 
       return newHistory;
     });
@@ -528,7 +506,6 @@ export default function LiveMetrics({ sessionId, metricsData }: LiveMetricsProps
                     {iteration.ai_recommendations.applied_changes && 
                      Object.keys(iteration.ai_recommendations.applied_changes).length > 0 && (
                       <div className="mt-2">
-                        <div className="text-xs text-blue-400 mb-1">Key Changes:</div>
                         <div className="space-y-1">
                           {Object.entries(iteration.ai_recommendations.applied_changes).slice(0, 3).map(([param, change]: [string, any]) => (
                             <div key={param} className="text-xs text-blue-200">
