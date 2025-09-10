@@ -84,13 +84,16 @@ class TrainingAdvisor:
                 self.retriever = self.vector_store.as_retriever(search_kwargs={"k": 5})
                 self.llm_logger.info("✅ RAG: Successfully initialized Pinecone vector store and retriever (k=5)")
                 
-                # Test retriever connectivity
-                try:
-                    test_query = "test connection"
-                    test_results = self.retriever.invoke(test_query)
-                    self.llm_logger.info(f"✅ RAG: Retriever connectivity test successful - found {len(test_results)} documents")
-                except Exception as test_e:
-                    self.llm_logger.warning(f"⚠️ RAG: Retriever connectivity test failed: {str(test_e)}")
+                # Test retriever connectivity only if we have OpenAI API key too
+                if self.api_key:
+                    try:
+                        test_query = "test connection"
+                        test_results = self.retriever.invoke(test_query)
+                        self.llm_logger.info(f"✅ RAG: Retriever connectivity test successful - found {len(test_results)} documents")
+                    except Exception as test_e:
+                        self.llm_logger.warning(f"⚠️ RAG: Retriever connectivity test failed: {str(test_e)}")
+                else:
+                    self.llm_logger.warning("⚠️ RAG: Skipping connectivity test - no OpenAI API key for embeddings")
                     
             except Exception as e:
                 self.llm_logger.error(f"❌ RAG: Failed to initialize Pinecone vector store: {str(e)}")
@@ -210,10 +213,10 @@ Required JSON structure:
                     
                 except Exception as e:
                     self.llm_logger.error(f"❌ RAG: Failed to retrieve hyperparameter context: {str(e)}")
-                    return ""
+                    return "No relevant context available due to retrieval error."
             else:
                 self.llm_logger.warning("⚠️ RAG: No retriever available for hyperparameter context")
-                return ""
+                return "No RAG context available - retriever not initialized."
 
         self.hyperparam_chain = (
             {
@@ -268,10 +271,10 @@ Focus on hyperparameter optimization first. Only recommend architecture changes 
                     
                 except Exception as e:
                     self.llm_logger.error(f"❌ RAG: Failed to retrieve optimization context: {str(e)}")
-                    return ""
+                    return "No relevant context available due to retrieval error."
             else:
                 self.llm_logger.warning("⚠️ RAG: No retriever available for optimization context")
-                return ""
+                return "No RAG context available - retriever not initialized."
 
         self.optimization_chain = (
             {
@@ -419,12 +422,24 @@ Focus on hyperparameter optimization first. Only recommend architecture changes 
             self.llm_logger.debug(f"📊 RAG: Dataset preview: {dataset_preview}")
             self.llm_logger.info(f"⚙️ RAG: Current config keys: {list(current_config.keys())}")
 
+            # Ensure inputs are properly formatted
             inputs = {
-                "dataset_info": dataset_info,
+                "dataset_info": str(dataset_info),
                 "current_config": str(current_config)  # Convert dict to string
             }
             
+            # Validate inputs structure
+            if not isinstance(inputs, dict):
+                self.llm_logger.error("❌ RAG: Inputs must be a dictionary")
+                return self._fallback_hyperparameters()
+            
+            if "dataset_info" not in inputs or "current_config" not in inputs:
+                self.llm_logger.error("❌ RAG: Missing required input keys")
+                return self._fallback_hyperparameters()
+            
             self.llm_logger.info("🔗 RAG: Invoking hyperparameter chain with RAG context...")
+            self.llm_logger.debug(f"🔗 RAG: Input keys: {list(inputs.keys())}")
+            
             result = self.hyperparam_chain.invoke(inputs)
             
             if isinstance(result, dict):
@@ -443,6 +458,10 @@ Focus on hyperparameter optimization first. Only recommend architecture changes 
                 self.llm_logger.warning(f"⚠️ RAG: Unexpected result type: {type(result)}")
                 return self._fallback_hyperparameters()
                 
+        except TypeError as te:
+            self.llm_logger.error(f"❌ RAG: Type error in LangChain hyperparameter chain: {te}")
+            self.llm_logger.error(f"❌ RAG: This often indicates incorrect input format to the chain")
+            return self._fallback_hyperparameters()
         except Exception as e:
             self.llm_logger.error(f"❌ RAG: Error in LangChain hyperparameter chain: {e}")
             self.llm_logger.error(f"❌ RAG: Exception type: {type(e).__name__}")
@@ -463,12 +482,24 @@ Focus on hyperparameter optimization first. Only recommend architecture changes 
             self.llm_logger.debug(f"📊 RAG: Training log preview: {log_preview}")
             self.llm_logger.info(f"⚙️ RAG: Current config keys: {list(current_config.keys())}")
 
+            # Ensure inputs are properly formatted
             inputs = {
-                "training_log": training_log,
+                "training_log": str(training_log),
                 "current_config": str(current_config)  # Convert dict to string
             }
             
+            # Validate inputs structure
+            if not isinstance(inputs, dict):
+                self.llm_logger.error("❌ RAG: Inputs must be a dictionary")
+                return self._fallback_optimizations()
+            
+            if "training_log" not in inputs or "current_config" not in inputs:
+                self.llm_logger.error("❌ RAG: Missing required input keys")
+                return self._fallback_optimizations()
+            
             self.llm_logger.info("🔗 RAG: Invoking optimization chain with RAG context...")
+            self.llm_logger.debug(f"🔗 RAG: Input keys: {list(inputs.keys())}")
+            
             result = self.optimization_chain.invoke(inputs)
             
             if isinstance(result, dict):
@@ -487,6 +518,10 @@ Focus on hyperparameter optimization first. Only recommend architecture changes 
                 self.llm_logger.warning(f"⚠️ RAG: Unexpected optimization result type: {type(result)}")
                 return self._fallback_optimizations()
                 
+        except TypeError as te:
+            self.llm_logger.error(f"❌ RAG: Type error in LangChain optimization chain: {te}")
+            self.llm_logger.error(f"❌ RAG: This often indicates incorrect input format to the chain")
+            return self._fallback_optimizations()
         except Exception as e:
             self.llm_logger.error(f"❌ RAG: Error in LangChain optimization chain: {e}")
             self.llm_logger.error(f"❌ RAG: Exception type: {type(e).__name__}")
