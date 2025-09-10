@@ -9,6 +9,10 @@ import os
 from datetime import datetime
 from typing import Dict, Any, Optional, List
 
+# Load environment variables
+from dotenv import load_dotenv
+load_dotenv()
+
 # LangChain / Pinecone
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_pinecone import PineconeVectorStore
@@ -22,12 +26,21 @@ except Exception:  # fallback for older versions
     from langchain.schema import Document
 
 # Prompts (simplified, rely on RAG)
-from prompts import (
-    HYPERPARAMETER_ADVISOR_SYSTEM_PROMPT,
-    get_hyperparameter_prompt,
-    OPTIMIZATION_SYSTEM_PROMPT,
-    get_optimization_prompt,
-)
+try:
+    from prompts import (
+        HYPERPARAMETER_ADVISOR_SYSTEM_PROMPT,
+        get_hyperparameter_prompt,
+        OPTIMIZATION_SYSTEM_PROMPT,
+        get_optimization_prompt,
+    )
+except ImportError:
+    # Fallback for relative import
+    from .prompts import (
+        HYPERPARAMETER_ADVISOR_SYSTEM_PROMPT,
+        get_hyperparameter_prompt,
+        OPTIMIZATION_SYSTEM_PROMPT,
+        get_optimization_prompt,
+    )
 
 # Import the LLM logger
 import sys
@@ -57,62 +70,214 @@ class TrainingAdvisor:
         knowledge_index_name = os.getenv("PINECONE_KNOWLEDGE_INDEX_NAME", "curate-knowledge")
         pinecone_api_key = os.getenv("PINECONE_API_KEY")
         if not pinecone_api_key:
-            self.llm_logger.warning("PINECONE_API_KEY not found - RAG disabled")
+            self.llm_logger.warning("⚠️ RAG: PINECONE_API_KEY not found - RAG disabled")
             self.vector_store = None
             self.retriever = None
         else:
-            self.vector_store = PineconeVectorStore(
-                index_name=knowledge_index_name,
-                embedding=self.embeddings,
-                pinecone_api_key=pinecone_api_key,
-            )
-            self.retriever = self.vector_store.as_retriever(search_kwargs={"k": 5})
+            try:
+                self.llm_logger.info(f"🔗 RAG: Initializing Pinecone vector store with index '{knowledge_index_name}'")
+                self.vector_store = PineconeVectorStore(
+                    index_name=knowledge_index_name,
+                    embedding=self.embeddings,
+                    pinecone_api_key=pinecone_api_key,
+                )
+                self.retriever = self.vector_store.as_retriever(search_kwargs={"k": 5})
+                self.llm_logger.info("✅ RAG: Successfully initialized Pinecone vector store and retriever (k=5)")
+                
+                # Test retriever connectivity
+                try:
+                    test_query = "test connection"
+                    test_results = self.retriever.invoke(test_query)
+                    self.llm_logger.info(f"✅ RAG: Retriever connectivity test successful - found {len(test_results)} documents")
+                except Exception as test_e:
+                    self.llm_logger.warning(f"⚠️ RAG: Retriever connectivity test failed: {str(test_e)}")
+                    
+            except Exception as e:
+                self.llm_logger.error(f"❌ RAG: Failed to initialize Pinecone vector store: {str(e)}")
+                self.vector_store = None
+                self.retriever = None
 
         # Chains
+        self.llm_logger.info("🔧 RAG: Setting up LangChain chains with RAG context integration")
         self._setup_chains()
+        self.llm_logger.info("✅ RAG: LangChain chains setup complete")
 
     # ---------- Chain setup ----------
     def _format_docs(self, docs: List[Document]) -> str:
+        """Format RAG documents with comprehensive logging."""
+        self.llm_logger.info(f"📄 RAG: Formatting {len(docs)} retrieved documents")
+        
         parts = []
-        for d in docs:
+        categories_found = {}
+        total_content_length = 0
+        
+        for i, d in enumerate(docs):
             meta = d.metadata or {}
             category = meta.get("category", "general")
             topic = meta.get("topic", "unknown")
-            parts.append(f"[{category}/{topic}] {d.page_content}")
-        return "\n\n".join(parts)
+            content_length = len(d.page_content)
+            total_content_length += content_length
+            
+            # Track categories for summary
+            if category not in categories_found:
+                categories_found[category] = 0
+            categories_found[category] += 1
+            
+            formatted_doc = f"[{category}/{topic}] {d.page_content}"
+            parts.append(formatted_doc)
+            
+            self.llm_logger.debug(f"📄 RAG Doc {i+1}: category='{category}', topic='{topic}', length={content_length}chars")
+            
+            # Log document metadata if available
+            if meta:
+                meta_summary = {k: v for k, v in meta.items() if k not in ['category', 'topic']}
+                if meta_summary:
+                    self.llm_logger.debug(f"📄 RAG Doc {i+1} metadata: {meta_summary}")
+        
+        # Log summary statistics
+        self.llm_logger.info(f"📄 RAG Summary: {len(docs)} docs, {total_content_length} total chars")
+        self.llm_logger.info(f"📄 RAG Categories found: {dict(categories_found)}")
+        
+        formatted_context = "\n\n".join(parts)
+        self.llm_logger.debug(f"📄 RAG Final context length: {len(formatted_context)} characters")
+        
+        return formatted_context
 
     def _setup_chains(self) -> None:
         parser = JsonOutputParser()
 
-        # Hyperparameter chain
-        hyper_prompt = ChatPromptTemplate.from_messages([
-            ("system", HYPERPARAMETER_ADVISOR_SYSTEM_PROMPT + "\n\nUse this context when relevant:\n{context}"),
-            ("human", "{user_prompt}")
-        ])
+        # Hyperparameter chain - expects dataset_info and current_config
+        hyper_prompt = ChatPromptTemplate.from_template("""
+You are an expert ML engineer. Use the provided context to recommend optimal hyperparameters.
 
-        # If retriever is unavailable, provide empty context
-        context_source = (self.retriever | self._format_docs) if self.retriever else (lambda _: "")
+Context from knowledge base:
+{context}
+
+Dataset Information:
+{dataset_info}
+
+Current Configuration:
+{current_config}
+
+Provide hyperparameter recommendations in valid JSON format with detailed reasoning.
+Focus on the most impactful optimizations based on the dataset characteristics.
+
+Required JSON structure:
+{{
+  "analysis": {{
+    "dataset_complexity": "low|medium|high",
+    "recommended_approach": "single_stage|dual_stage",
+    "key_insights": ["insight1", "insight2"]
+  }},
+  "hyperparameters": {{
+    "training_config": {{
+      "batch_size": {{"value": 32, "reasoning": "explanation"}},
+      "initial_learning_rate": {{"value": 0.001, "reasoning": "explanation"}},
+      "initial_epochs": {{"value": 20, "reasoning": "explanation"}},
+      "image_size": {{"value": [224, 224], "reasoning": "explanation"}},
+      "dual_stage": {{"value": true, "reasoning": "explanation"}}
+    }},
+    "fine_tuning_config": {{
+      "fine_tune_learning_rate": {{"value": 0.0001, "reasoning": "explanation"}},
+      "fine_tune_epochs": {{"value": 10, "reasoning": "explanation"}},
+      "unfreeze_percent": {{"value": 0.5, "reasoning": "explanation"}}
+    }}
+  }}
+}}
+""")
+
+        # Context retrieval function
+        def get_context_for_query(inputs):
+            if self.retriever:
+                # Create a search query from the inputs
+                dataset_preview = str(inputs.get('dataset_info', ''))[:200]
+                search_query = f"hyperparameter optimization {dataset_preview}"
+                
+                self.llm_logger.info(f"🔍 RAG: Searching for hyperparameter context")
+                self.llm_logger.debug(f"🔍 RAG Query: '{search_query[:100]}...' (truncated)")
+                
+                try:
+                    docs = self.retriever.invoke(search_query)
+                    self.llm_logger.info(f"🔍 RAG: Retrieved {len(docs)} documents for hyperparameter query")
+                    
+                    # Log document scores if available
+                    for i, doc in enumerate(docs):
+                        if hasattr(doc, 'metadata') and 'score' in doc.metadata:
+                            score = doc.metadata['score']
+                            self.llm_logger.debug(f"🔍 RAG Doc {i+1} similarity score: {score:.4f}")
+                    
+                    return self._format_docs(docs)
+                    
+                except Exception as e:
+                    self.llm_logger.error(f"❌ RAG: Failed to retrieve hyperparameter context: {str(e)}")
+                    return ""
+            else:
+                self.llm_logger.warning("⚠️ RAG: No retriever available for hyperparameter context")
+                return ""
 
         self.hyperparam_chain = (
             {
-                "context": context_source,
-                "user_prompt": RunnablePassthrough(),
+                "context": get_context_for_query,
+                "dataset_info": lambda x: x["dataset_info"],
+                "current_config": lambda x: x["current_config"]
             }
             | hyper_prompt
             | self.llm
             | parser
         )
 
-        # Optimization chain
-        opt_prompt = ChatPromptTemplate.from_messages([
-            ("system", OPTIMIZATION_SYSTEM_PROMPT + "\n\nUse this context when relevant:\n{context}"),
-            ("human", "{user_prompt}")
-        ])
+        # Optimization chain - expects training_log and current_config
+        opt_prompt = ChatPromptTemplate.from_template("""
+You are an ML optimization expert. Use the context to analyze training issues and recommend improvements.
+
+Context from knowledge base:
+{context}
+
+Training Log Analysis:
+{training_log}
+
+Current Configuration:
+{current_config}
+
+Analyze the training performance and recommend SUBSTANTIAL optimizations that will significantly impact results.
+Provide your analysis and recommendations in valid JSON format.
+
+Focus on hyperparameter optimization first. Only recommend architecture changes if absolutely necessary.
+""")
+
+        def get_context_for_optimization(inputs):
+            if self.retriever:
+                # Create a search query from the training log
+                training_preview = str(inputs.get('training_log', ''))[:200]
+                search_query = f"training optimization {training_preview}"
+                
+                self.llm_logger.info(f"🔍 RAG: Searching for optimization context")
+                self.llm_logger.debug(f"🔍 RAG Query: '{search_query[:100]}...' (truncated)")
+                
+                try:
+                    docs = self.retriever.invoke(search_query)
+                    self.llm_logger.info(f"🔍 RAG: Retrieved {len(docs)} documents for optimization query")
+                    
+                    # Log document scores if available
+                    for i, doc in enumerate(docs):
+                        if hasattr(doc, 'metadata') and 'score' in doc.metadata:
+                            score = doc.metadata['score']
+                            self.llm_logger.debug(f"🔍 RAG Doc {i+1} similarity score: {score:.4f}")
+                    
+                    return self._format_docs(docs)
+                    
+                except Exception as e:
+                    self.llm_logger.error(f"❌ RAG: Failed to retrieve optimization context: {str(e)}")
+                    return ""
+            else:
+                self.llm_logger.warning("⚠️ RAG: No retriever available for optimization context")
+                return ""
 
         self.optimization_chain = (
             {
-                "context": context_source,
-                "user_prompt": RunnablePassthrough(),
+                "context": get_context_for_optimization,
+                "training_log": lambda x: x["training_log"],
+                "current_config": lambda x: x["current_config"]
             }
             | opt_prompt
             | self.llm
@@ -238,21 +403,174 @@ class TrainingAdvisor:
             logger.error(f"Failed to extract current config: {str(e)}")
             return {"error": str(e)}
     
+    # ---------- LangChain-powered recommendation methods ----------
+    def recommend_hyperparameters(self, dataset_info: str, current_config: dict) -> dict:
+        """Recommend hyperparameters using LangChain RAG."""
+        self.llm_logger.info("🚀 RAG: Starting hyperparameter recommendation with LangChain")
+        
+        try:
+            if not self.hyperparam_chain:
+                self.llm_logger.warning("⚠️ RAG: Chain not initialized, using fallback response")
+                return self._fallback_hyperparameters()
+
+            # Log input details
+            dataset_preview = dataset_info[:200] + "..." if len(dataset_info) > 200 else dataset_info
+            self.llm_logger.info(f"📊 RAG: Dataset info length: {len(dataset_info)} chars")
+            self.llm_logger.debug(f"📊 RAG: Dataset preview: {dataset_preview}")
+            self.llm_logger.info(f"⚙️ RAG: Current config keys: {list(current_config.keys())}")
+
+            inputs = {
+                "dataset_info": dataset_info,
+                "current_config": str(current_config)  # Convert dict to string
+            }
+            
+            self.llm_logger.info("🔗 RAG: Invoking hyperparameter chain with RAG context...")
+            result = self.hyperparam_chain.invoke(inputs)
+            
+            if isinstance(result, dict):
+                self.llm_logger.info("✅ RAG: Successfully received hyperparameter recommendations")
+                self.llm_logger.debug(f"✅ RAG: Result keys: {list(result.keys())}")
+                
+                # Log analysis if available
+                if "analysis" in result:
+                    analysis = result["analysis"]
+                    complexity = analysis.get("dataset_complexity", "unknown")
+                    approach = analysis.get("recommended_approach", "unknown")
+                    self.llm_logger.info(f"📊 RAG Analysis: complexity={complexity}, approach={approach}")
+                
+                return result
+            else:
+                self.llm_logger.warning(f"⚠️ RAG: Unexpected result type: {type(result)}")
+                return self._fallback_hyperparameters()
+                
+        except Exception as e:
+            self.llm_logger.error(f"❌ RAG: Error in LangChain hyperparameter chain: {e}")
+            self.llm_logger.error(f"❌ RAG: Exception type: {type(e).__name__}")
+            return self._fallback_hyperparameters()
+
+    def recommend_optimizations(self, training_log: str, current_config: dict) -> dict:
+        """Recommend optimizations using LangChain RAG."""
+        self.llm_logger.info("🚀 RAG: Starting optimization recommendation with LangChain")
+        
+        try:
+            if not self.optimization_chain:
+                self.llm_logger.warning("⚠️ RAG: Optimization chain not initialized, using fallback")
+                return self._fallback_optimizations()
+
+            # Log input details
+            log_preview = training_log[:200] + "..." if len(training_log) > 200 else training_log
+            self.llm_logger.info(f"📊 RAG: Training log length: {len(training_log)} chars")
+            self.llm_logger.debug(f"📊 RAG: Training log preview: {log_preview}")
+            self.llm_logger.info(f"⚙️ RAG: Current config keys: {list(current_config.keys())}")
+
+            inputs = {
+                "training_log": training_log,
+                "current_config": str(current_config)  # Convert dict to string
+            }
+            
+            self.llm_logger.info("🔗 RAG: Invoking optimization chain with RAG context...")
+            result = self.optimization_chain.invoke(inputs)
+            
+            if isinstance(result, dict):
+                self.llm_logger.info("✅ RAG: Successfully received optimization recommendations")
+                self.llm_logger.debug(f"✅ RAG: Result keys: {list(result.keys())}")
+                
+                # Log analysis if available
+                if "analysis" in result:
+                    analysis = result["analysis"]
+                    if "key_issues" in analysis:
+                        issues = analysis["key_issues"]
+                        self.llm_logger.info(f"📊 RAG Analysis: Found {len(issues)} key issues")
+                
+                return result
+            else:
+                self.llm_logger.warning(f"⚠️ RAG: Unexpected optimization result type: {type(result)}")
+                return self._fallback_optimizations()
+                
+        except Exception as e:
+            self.llm_logger.error(f"❌ RAG: Error in LangChain optimization chain: {e}")
+            self.llm_logger.error(f"❌ RAG: Exception type: {type(e).__name__}")
+            return self._fallback_optimizations()
+
+    def _fallback_hyperparameters(self) -> dict:
+        """Fallback hyperparameter recommendations when chain fails."""
+        self.llm_logger.warning("🔄 RAG: Using fallback hyperparameter recommendations")
+        return {
+            "analysis": {
+                "dataset_complexity": "medium",
+                "recommended_approach": "dual_stage",
+                "key_insights": ["Using fallback recommendations due to chain failure"]
+            },
+            "hyperparameters": {
+                "training_config": {
+                    "batch_size": {"value": 32, "reasoning": "Conservative default for medium datasets"},
+                    "initial_learning_rate": {"value": 0.001, "reasoning": "Standard learning rate for transfer learning"},
+                    "initial_epochs": {"value": 20, "reasoning": "Sufficient epochs for initial training"},
+                    "image_size": {"value": [224, 224], "reasoning": "Standard ImageNet input size"},
+                    "dual_stage": {"value": True, "reasoning": "Recommended for most image classification tasks"}
+                },
+                "fine_tuning_config": {
+                    "fine_tune_learning_rate": {"value": 0.0001, "reasoning": "Lower learning rate for fine-tuning"},
+                    "fine_tune_epochs": {"value": 10, "reasoning": "Conservative epochs for fine-tuning"},
+                    "unfreeze_percent": {"value": 0.5, "reasoning": "Unfreeze half the layers for fine-tuning"}
+                }
+            }
+        }
+
+    def _fallback_optimizations(self) -> dict:
+        """Fallback optimization recommendations when chain fails."""
+        self.llm_logger.warning("🔄 RAG: Using fallback optimization recommendations")
+        return {
+            "analysis": {
+                "training_performance": "unknown",
+                "key_issues": ["Unable to analyze due to chain failure"],
+                "recommendations": ["Manual hyperparameter tuning recommended"]
+            },
+            "optimization_recommendations": {
+                "training_config": {
+                    "batch_size": {"recommended_value": 32, "reasoning": "Conservative default"},
+                    "initial_learning_rate": {"recommended_value": 0.001, "reasoning": "Standard transfer learning rate"}
+                }
+            }
+        }
+
     # ---------- RAG-powered tasks ----------
     def _invoke_hyperparams_chain(self, user_prompt: str) -> Optional[Dict[str, Any]]:
         try:
-            self.llm_logger.info("Invoking LangChain hyperparameter chain with RAG context")
-            return self.hyperparam_chain.invoke(user_prompt)
+            self.llm_logger.info("🔗 RAG: Invoking LangChain hyperparameter chain with RAG context")
+            self.llm_logger.debug(f"🔗 RAG: Prompt length: {len(user_prompt)} characters")
+            
+            result = self.hyperparam_chain.invoke(user_prompt)
+            
+            if result:
+                self.llm_logger.info("✅ RAG: Hyperparameter chain completed successfully")
+                return result
+            else:
+                self.llm_logger.warning("⚠️ RAG: Hyperparameter chain returned empty result")
+                return None
+                
         except Exception as e:
-            self.llm_logger.error(f"LangChain hyperparam chain failed: {str(e)}")
+            self.llm_logger.error(f"❌ RAG: LangChain hyperparam chain failed: {str(e)}")
+            self.llm_logger.error(f"❌ RAG: Exception type: {type(e).__name__}")
             return None
 
     def _invoke_optimization_chain(self, user_prompt: str) -> Optional[Dict[str, Any]]:
         try:
-            self.llm_logger.info("Invoking LangChain optimization chain with RAG context")
-            return self.optimization_chain.invoke(user_prompt)
+            self.llm_logger.info("🔗 RAG: Invoking LangChain optimization chain with RAG context")
+            self.llm_logger.debug(f"🔗 RAG: Prompt length: {len(user_prompt)} characters")
+            
+            result = self.optimization_chain.invoke(user_prompt)
+            
+            if result:
+                self.llm_logger.info("✅ RAG: Optimization chain completed successfully")
+                return result
+            else:
+                self.llm_logger.warning("⚠️ RAG: Optimization chain returned empty result")
+                return None
+                
         except Exception as e:
-            self.llm_logger.error(f"LangChain optimization chain failed: {str(e)}")
+            self.llm_logger.error(f"❌ RAG: LangChain optimization chain failed: {str(e)}")
+            self.llm_logger.error(f"❌ RAG: Exception type: {type(e).__name__}")
             return None
             
     
@@ -286,23 +604,36 @@ class TrainingAdvisor:
         Returns:
             Dictionary containing recommendations or None if failed
         """
-        logger.info("Extracting dataset information for AI analysis...")
+        self.llm_logger.info("🚀 RAG: Starting hyperparameter recommendation workflow")
+        
+        self.llm_logger.info("📊 RAG: Extracting dataset information for AI analysis...")
         dataset_info = self.extract_dataset_info(data_parser, trainer)
         current_config = self.get_current_config(trainer)
 
-        logger.info("Calling LangChain RAG for hyperparameter recommendations...")
+        # Log extracted info summary
+        if isinstance(dataset_info, dict):
+            self.llm_logger.info(f"📊 RAG: Dataset extracted - classes: {dataset_info.get('num_classes', 'unknown')}, images: {dataset_info.get('total_images', 'unknown')}")
+        if isinstance(current_config, dict):
+            self.llm_logger.info(f"⚙️ RAG: Config extracted - model: {current_config.get('base_model_name', 'unknown')}, batch_size: {current_config.get('batch_size', 'unknown')}")
+
+        self.llm_logger.info("🔗 RAG: Calling LangChain RAG for hyperparameter recommendations...")
         user_prompt = get_hyperparameter_prompt(
             json.dumps(dataset_info, indent=2),
             json.dumps(current_config, indent=2),
         )
 
+        self.llm_logger.debug(f"🔗 RAG: Generated prompt length: {len(user_prompt)} characters")
         recommendations = self._invoke_hyperparams_chain(user_prompt)
         
         if recommendations:
-            logger.info("Successfully received AI recommendations")
+            self.llm_logger.info("✅ RAG: Successfully received AI recommendations")
+            if isinstance(recommendations, dict) and "analysis" in recommendations:
+                analysis = recommendations["analysis"]
+                self.llm_logger.info(f"📊 RAG: Recommended complexity: {analysis.get('dataset_complexity', 'unknown')}")
+                self.llm_logger.info(f"📊 RAG: Recommended approach: {analysis.get('recommended_approach', 'unknown')}")
             return recommendations
         else:
-            logger.error("Failed to get recommendations from AI advisor")
+            self.llm_logger.error("❌ RAG: Failed to get recommendations from AI advisor")
             return None
     
     def save_recommendations(self, recommendations: Dict[str, Any], filepath: Optional[str] = None) -> str:
