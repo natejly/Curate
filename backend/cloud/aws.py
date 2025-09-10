@@ -50,6 +50,25 @@ class AWSHelper:
             print("✅ OpenAI API key will be available in SageMaker environment")
         else:
             print("⚠️ No OpenAI API key found - AI advisor will be disabled")
+        
+        # Pass Pinecone API key and configuration for RAG (secure)
+        local_pinecone_key = os.getenv('PINECONE_API_KEY')
+        if local_pinecone_key:
+            environment['PINECONE_API_KEY'] = local_pinecone_key
+            print("✅ Pinecone API key will be available in SageMaker environment")
+        else:
+            print("⚠️ No Pinecone API key found - RAG will be disabled")
+        
+        # Pass Pinecone knowledge index name
+        local_pinecone_index = os.getenv('PINECONE_KNOWLEDGE_INDEX_NAME')
+        if local_pinecone_index:
+            environment['PINECONE_KNOWLEDGE_INDEX_NAME'] = local_pinecone_index
+            print(f"✅ Pinecone knowledge index will be available in SageMaker: {local_pinecone_index}")
+        else:
+            # Use default if not specified
+            environment['PINECONE_KNOWLEDGE_INDEX_NAME'] = 'curate-knowledge'
+            print("⚠️ Using default Pinecone knowledge index: curate-knowledge")
+        
         # Ensure AWS region is present for explicit boto3 clients
         local_region = os.getenv('AWS_REGION') or os.getenv('AWS_DEFAULT_REGION')
         if local_region:

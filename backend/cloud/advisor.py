@@ -189,40 +189,71 @@ Required JSON structure:
 }}
 """)
 
-        # Context retrieval function
+        # Context retrieval function with error handling
         def get_context_for_query(inputs):
-            if self.retriever:
-                # Create a search query from the inputs
-                dataset_preview = str(inputs.get('dataset_info', ''))[:200]
-                search_query = f"hyperparameter optimization {dataset_preview}"
+            try:
+                if not isinstance(inputs, dict):
+                    self.llm_logger.warning(f"⚠️ RAG: Expected dict input, got {type(inputs)}")
+                    return "No RAG context available - invalid input format."
                 
-                self.llm_logger.info(f"🔍 RAG: Searching for hyperparameter context")
-                self.llm_logger.debug(f"🔍 RAG Query: '{search_query[:100]}...' (truncated)")
-                
-                try:
-                    docs = self.retriever.invoke(search_query)
-                    self.llm_logger.info(f"🔍 RAG: Retrieved {len(docs)} documents for hyperparameter query")
+                if self.retriever:
+                    # Create a search query from the inputs
+                    dataset_preview = str(inputs.get('dataset_info', ''))[:200]
+                    search_query = f"hyperparameter optimization {dataset_preview}"
                     
-                    # Log document scores if available
-                    for i, doc in enumerate(docs):
-                        if hasattr(doc, 'metadata') and 'score' in doc.metadata:
-                            score = doc.metadata['score']
-                            self.llm_logger.debug(f"🔍 RAG Doc {i+1} similarity score: {score:.4f}")
+                    self.llm_logger.info(f"🔍 RAG: Searching for hyperparameter context")
+                    self.llm_logger.debug(f"🔍 RAG Query: '{search_query[:100]}...' (truncated)")
                     
-                    return self._format_docs(docs)
-                    
-                except Exception as e:
-                    self.llm_logger.error(f"❌ RAG: Failed to retrieve hyperparameter context: {str(e)}")
-                    return "No relevant context available due to retrieval error."
-            else:
-                self.llm_logger.warning("⚠️ RAG: No retriever available for hyperparameter context")
-                return "No RAG context available - retriever not initialized."
+                    try:
+                        docs = self.retriever.invoke(search_query)
+                        self.llm_logger.info(f"🔍 RAG: Retrieved {len(docs)} documents for hyperparameter query")
+                        
+                        # Log document scores if available
+                        for i, doc in enumerate(docs):
+                            if hasattr(doc, 'metadata') and 'score' in doc.metadata:
+                                score = doc.metadata['score']
+                                self.llm_logger.debug(f"🔍 RAG Doc {i+1} similarity score: {score:.4f}")
+                        
+                        return self._format_docs(docs)
+                        
+                    except Exception as e:
+                        self.llm_logger.error(f"❌ RAG: Failed to retrieve hyperparameter context: {str(e)}")
+                        return "No relevant context available due to retrieval error."
+                else:
+                    self.llm_logger.warning("⚠️ RAG: No retriever available for hyperparameter context")
+                    return "No RAG context available - retriever not initialized."
+            except Exception as e:
+                self.llm_logger.error(f"❌ RAG: Error in context retrieval: {str(e)}")
+                return "Error retrieving context."
+
+        # Safe input extraction functions
+        def safe_get_dataset_info(inputs):
+            try:
+                if isinstance(inputs, dict):
+                    return str(inputs.get("dataset_info", "No dataset info provided"))
+                else:
+                    self.llm_logger.warning(f"⚠️ RAG: Expected dict for dataset_info, got {type(inputs)}")
+                    return "No dataset info provided"
+            except Exception as e:
+                self.llm_logger.error(f"❌ RAG: Error extracting dataset_info: {str(e)}")
+                return "Error extracting dataset info"
+
+        def safe_get_current_config(inputs):
+            try:
+                if isinstance(inputs, dict):
+                    return str(inputs.get("current_config", "No config provided"))
+                else:
+                    self.llm_logger.warning(f"⚠️ RAG: Expected dict for current_config, got {type(inputs)}")
+                    return "No config provided"
+            except Exception as e:
+                self.llm_logger.error(f"❌ RAG: Error extracting current_config: {str(e)}")
+                return "Error extracting config"
 
         self.hyperparam_chain = (
             {
                 "context": get_context_for_query,
-                "dataset_info": lambda x: x["dataset_info"],
-                "current_config": lambda x: x["current_config"]
+                "dataset_info": safe_get_dataset_info,
+                "current_config": safe_get_current_config
             }
             | hyper_prompt
             | self.llm
@@ -249,38 +280,69 @@ Focus on hyperparameter optimization first. Only recommend architecture changes 
 """)
 
         def get_context_for_optimization(inputs):
-            if self.retriever:
-                # Create a search query from the training log
-                training_preview = str(inputs.get('training_log', ''))[:200]
-                search_query = f"training optimization {training_preview}"
+            try:
+                if not isinstance(inputs, dict):
+                    self.llm_logger.warning(f"⚠️ RAG: Expected dict input, got {type(inputs)}")
+                    return "No RAG context available - invalid input format."
                 
-                self.llm_logger.info(f"🔍 RAG: Searching for optimization context")
-                self.llm_logger.debug(f"🔍 RAG Query: '{search_query[:100]}...' (truncated)")
-                
-                try:
-                    docs = self.retriever.invoke(search_query)
-                    self.llm_logger.info(f"🔍 RAG: Retrieved {len(docs)} documents for optimization query")
+                if self.retriever:
+                    # Create a search query from the training log
+                    training_preview = str(inputs.get('training_log', ''))[:200]
+                    search_query = f"training optimization {training_preview}"
                     
-                    # Log document scores if available
-                    for i, doc in enumerate(docs):
-                        if hasattr(doc, 'metadata') and 'score' in doc.metadata:
-                            score = doc.metadata['score']
-                            self.llm_logger.debug(f"🔍 RAG Doc {i+1} similarity score: {score:.4f}")
+                    self.llm_logger.info(f"🔍 RAG: Searching for optimization context")
+                    self.llm_logger.debug(f"🔍 RAG Query: '{search_query[:100]}...' (truncated)")
                     
-                    return self._format_docs(docs)
-                    
-                except Exception as e:
-                    self.llm_logger.error(f"❌ RAG: Failed to retrieve optimization context: {str(e)}")
-                    return "No relevant context available due to retrieval error."
-            else:
-                self.llm_logger.warning("⚠️ RAG: No retriever available for optimization context")
-                return "No RAG context available - retriever not initialized."
+                    try:
+                        docs = self.retriever.invoke(search_query)
+                        self.llm_logger.info(f"🔍 RAG: Retrieved {len(docs)} documents for optimization query")
+                        
+                        # Log document scores if available
+                        for i, doc in enumerate(docs):
+                            if hasattr(doc, 'metadata') and 'score' in doc.metadata:
+                                score = doc.metadata['score']
+                                self.llm_logger.debug(f"🔍 RAG Doc {i+1} similarity score: {score:.4f}")
+                        
+                        return self._format_docs(docs)
+                        
+                    except Exception as e:
+                        self.llm_logger.error(f"❌ RAG: Failed to retrieve optimization context: {str(e)}")
+                        return "No relevant context available due to retrieval error."
+                else:
+                    self.llm_logger.warning("⚠️ RAG: No retriever available for optimization context")
+                    return "No RAG context available - retriever not initialized."
+            except Exception as e:
+                self.llm_logger.error(f"❌ RAG: Error in optimization context retrieval: {str(e)}")
+                return "Error retrieving optimization context."
+
+        # Safe input extraction functions for optimization
+        def safe_get_training_log(inputs):
+            try:
+                if isinstance(inputs, dict):
+                    return str(inputs.get("training_log", "No training log provided"))
+                else:
+                    self.llm_logger.warning(f"⚠️ RAG: Expected dict for training_log, got {type(inputs)}")
+                    return "No training log provided"
+            except Exception as e:
+                self.llm_logger.error(f"❌ RAG: Error extracting training_log: {str(e)}")
+                return "Error extracting training log"
+
+        def safe_get_config_for_opt(inputs):
+            try:
+                if isinstance(inputs, dict):
+                    return str(inputs.get("current_config", "No config provided"))
+                else:
+                    self.llm_logger.warning(f"⚠️ RAG: Expected dict for current_config, got {type(inputs)}")
+                    return "No config provided"
+            except Exception as e:
+                self.llm_logger.error(f"❌ RAG: Error extracting current_config: {str(e)}")
+                return "Error extracting config"
 
         self.optimization_chain = (
             {
                 "context": get_context_for_optimization,
-                "training_log": lambda x: x["training_log"],
-                "current_config": lambda x: x["current_config"]
+                "training_log": safe_get_training_log,
+                "current_config": safe_get_config_for_opt
             }
             | opt_prompt
             | self.llm
