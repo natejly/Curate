@@ -17,8 +17,7 @@ tqdm>=4.64.0
 openai>=1.0.0
 
 # Vector database for RAG
-pinecone-client>=3.0.0
-
+pinecone
 # Development and utilities
 pathlib2>=2.3.0; python_version<"3.4"
 

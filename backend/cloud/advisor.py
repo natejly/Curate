@@ -320,7 +320,6 @@ class TrainingAdvisor:
                 max_tokens=4000,
                 response_format={"type": "json_object"}  # Ensure JSON response
             )
-            
             content = response.choices[0].message.content
             
             # Log the response
