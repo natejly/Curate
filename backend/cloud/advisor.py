@@ -145,6 +145,11 @@ class TrainingAdvisor:
         formatted_context = "\n\n".join(parts)
         logger.debug(f"📄 RAG Final context length: {len(formatted_context)} characters")
         
+        # Debug: Show first part of the actual context being used
+        if formatted_context:
+            context_preview = formatted_context[:500]
+            logger.debug(f"📄 RAG Context Preview (first 500 chars):\n{context_preview}...")
+        
         return formatted_context
 
     def _setup_chains(self) -> None:
@@ -216,13 +221,22 @@ Required JSON structure:
                         docs = self.retriever.invoke(search_query)
                         logger.info(f"🔍 RAG: Retrieved {len(docs)} documents for hyperparameter query")
                         
-                        # Log document scores if available
+                        # Debug: Log individual document details
                         for i, doc in enumerate(docs):
-                            if hasattr(doc, 'metadata') and 'score' in doc.metadata:
-                                score = doc.metadata['score']
+                            content_preview = doc.page_content[:200] if doc.page_content else "No content"
+                            metadata = doc.metadata if hasattr(doc, 'metadata') else {}
+                            category = metadata.get('category', 'unknown')
+                            topic = metadata.get('topic', 'unknown')
+                            
+                            logger.debug(f"🔍 RAG Doc {i+1} [{category}/{topic}]: {content_preview}...")
+                            
+                            if 'score' in metadata:
+                                score = metadata['score']
                                 logger.debug(f"🔍 RAG Doc {i+1} similarity score: {score:.4f}")
                         
-                        return self._format_docs(docs)
+                        formatted_context = self._format_docs(docs)
+                        logger.debug(f"🔍 RAG: Full hyperparameter context prepared ({len(formatted_context)} chars)")
+                        return formatted_context
                         
                     except Exception as e:
                         logger.error(f"❌ RAG: Failed to retrieve hyperparameter context: {str(e)}")
@@ -318,24 +332,33 @@ Focus on hyperparameter optimization first. Only recommend architecture changes 
                     
                     try:
                         docs = self.retriever.invoke(search_query)
-                        self.llm_logger.info(f"🔍 RAG: Retrieved {len(docs)} documents for optimization query")
+                        logger.info(f"🔍 RAG: Retrieved {len(docs)} documents for optimization query")
                         
-                        # Log document scores if available
+                        # Debug: Log individual document details
                         for i, doc in enumerate(docs):
-                            if hasattr(doc, 'metadata') and 'score' in doc.metadata:
-                                score = doc.metadata['score']
-                                self.llm_logger.debug(f"🔍 RAG Doc {i+1} similarity score: {score:.4f}")
+                            content_preview = doc.page_content[:200] if doc.page_content else "No content"
+                            metadata = doc.metadata if hasattr(doc, 'metadata') else {}
+                            category = metadata.get('category', 'unknown')
+                            topic = metadata.get('topic', 'unknown')
+                            
+                            logger.debug(f"🔍 RAG Doc {i+1} [{category}/{topic}]: {content_preview}...")
+                            
+                            if 'score' in metadata:
+                                score = metadata['score']
+                                logger.debug(f"🔍 RAG Doc {i+1} similarity score: {score:.4f}")
                         
-                        return self._format_docs(docs)
+                        formatted_context = self._format_docs(docs)
+                        logger.debug(f"🔍 RAG: Full optimization context prepared ({len(formatted_context)} chars)")
+                        return formatted_context
                         
                     except Exception as e:
-                        self.llm_logger.error(f"❌ RAG: Failed to retrieve optimization context: {str(e)}")
+                        logger.error(f"❌ RAG: Failed to retrieve optimization context: {str(e)}")
                         return "No relevant context available due to retrieval error."
                 else:
-                    self.llm_logger.warning("⚠️ RAG: No retriever available for optimization context")
+                    logger.warning("⚠️ RAG: No retriever available for optimization context")
                     return "No RAG context available - retriever not initialized."
             except Exception as e:
-                self.llm_logger.error(f"❌ RAG: Error in optimization context retrieval: {str(e)}")
+                logger.error(f"❌ RAG: Error in optimization context retrieval: {str(e)}")
                 return "Error retrieving optimization context."
 
         # Safe input extraction functions for optimization
