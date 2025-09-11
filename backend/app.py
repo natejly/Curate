@@ -1105,7 +1105,7 @@ async def train(session_id: str):
         }
         output_path = f"s3://{aws_helper.bucket}/curate/output/"
         estimator = aws_helper.start_sagemaker_executor(
-            instance_type="ml.g4dn.2xlarge",
+            instance_type="ml.g5.4xlarge",
             instance_count=1,
             hyperparameters=hyperparameters,
             output_path=output_path,
@@ -1578,7 +1578,7 @@ async def train_s3(zip_name: str, request: Request, session_id: Optional[str] = 
         }
         output_path = f"s3://{bucket}/curate/output/"
         estimator = aws_helper.start_sagemaker_executor(
-            instance_type="ml.g4dn.2xlarge",
+            instance_type="ml.g5.4xlarge",
             instance_count=1,
             hyperparameters=hyperparameters,
             output_path=output_path,
