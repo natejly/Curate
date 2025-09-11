@@ -192,13 +192,20 @@ Required JSON structure:
         # Context retrieval function with error handling
         def get_context_for_query(inputs):
             try:
-                if not isinstance(inputs, dict):
-                    self.llm_logger.warning(f"⚠️ RAG: Expected dict input, got {type(inputs)}")
-                    return "No RAG context available - invalid input format."
+                # Handle different input types
+                dataset_info = ""
+                if isinstance(inputs, dict):
+                    dataset_info = str(inputs.get('dataset_info', ''))
+                elif isinstance(inputs, str):
+                    # If the entire input is a string, use it as dataset_info
+                    dataset_info = inputs
+                else:
+                    self.llm_logger.warning(f"⚠️ RAG: Unexpected input type for context retrieval: {type(inputs)}")
+                    dataset_info = str(inputs) if inputs else ""
                 
                 if self.retriever:
                     # Create a search query from the inputs
-                    dataset_preview = str(inputs.get('dataset_info', ''))[:200]
+                    dataset_preview = dataset_info[:200]
                     search_query = f"hyperparameter optimization {dataset_preview}"
                     
                     self.llm_logger.info(f"🔍 RAG: Searching for hyperparameter context")
@@ -229,22 +236,30 @@ Required JSON structure:
         # Safe input extraction functions
         def safe_get_dataset_info(inputs):
             try:
+                # Handle both dict and direct string inputs
                 if isinstance(inputs, dict):
                     return str(inputs.get("dataset_info", "No dataset info provided"))
+                elif isinstance(inputs, str):
+                    # If it's already a string, it might be the dataset_info directly
+                    return inputs if inputs else "No dataset info provided"
                 else:
-                    self.llm_logger.warning(f"⚠️ RAG: Expected dict for dataset_info, got {type(inputs)}")
-                    return "No dataset info provided"
+                    self.llm_logger.warning(f"⚠️ RAG: Expected dict or str for dataset_info, got {type(inputs)}")
+                    return str(inputs) if inputs else "No dataset info provided"
             except Exception as e:
                 self.llm_logger.error(f"❌ RAG: Error extracting dataset_info: {str(e)}")
                 return "Error extracting dataset info"
 
         def safe_get_current_config(inputs):
             try:
+                # Handle both dict and direct string inputs
                 if isinstance(inputs, dict):
                     return str(inputs.get("current_config", "No config provided"))
+                elif isinstance(inputs, str):
+                    # If it's already a string, it might be the config directly
+                    return inputs if inputs else "No config provided"
                 else:
-                    self.llm_logger.warning(f"⚠️ RAG: Expected dict for current_config, got {type(inputs)}")
-                    return "No config provided"
+                    self.llm_logger.warning(f"⚠️ RAG: Expected dict or str for current_config, got {type(inputs)}")
+                    return str(inputs) if inputs else "No config provided"
             except Exception as e:
                 self.llm_logger.error(f"❌ RAG: Error extracting current_config: {str(e)}")
                 return "Error extracting config"
@@ -281,13 +296,20 @@ Focus on hyperparameter optimization first. Only recommend architecture changes 
 
         def get_context_for_optimization(inputs):
             try:
-                if not isinstance(inputs, dict):
-                    self.llm_logger.warning(f"⚠️ RAG: Expected dict input, got {type(inputs)}")
-                    return "No RAG context available - invalid input format."
+                # Handle different input types
+                training_log = ""
+                if isinstance(inputs, dict):
+                    training_log = str(inputs.get('training_log', ''))
+                elif isinstance(inputs, str):
+                    # If the entire input is a string, use it as training_log
+                    training_log = inputs
+                else:
+                    self.llm_logger.warning(f"⚠️ RAG: Unexpected input type for optimization context: {type(inputs)}")
+                    training_log = str(inputs) if inputs else ""
                 
                 if self.retriever:
                     # Create a search query from the training log
-                    training_preview = str(inputs.get('training_log', ''))[:200]
+                    training_preview = training_log[:200]
                     search_query = f"training optimization {training_preview}"
                     
                     self.llm_logger.info(f"🔍 RAG: Searching for optimization context")
@@ -318,22 +340,30 @@ Focus on hyperparameter optimization first. Only recommend architecture changes 
         # Safe input extraction functions for optimization
         def safe_get_training_log(inputs):
             try:
+                # Handle both dict and direct string inputs
                 if isinstance(inputs, dict):
                     return str(inputs.get("training_log", "No training log provided"))
+                elif isinstance(inputs, str):
+                    # If it's already a string, it might be the training_log directly
+                    return inputs if inputs else "No training log provided"
                 else:
-                    self.llm_logger.warning(f"⚠️ RAG: Expected dict for training_log, got {type(inputs)}")
-                    return "No training log provided"
+                    self.llm_logger.warning(f"⚠️ RAG: Expected dict or str for training_log, got {type(inputs)}")
+                    return str(inputs) if inputs else "No training log provided"
             except Exception as e:
                 self.llm_logger.error(f"❌ RAG: Error extracting training_log: {str(e)}")
                 return "Error extracting training log"
 
         def safe_get_config_for_opt(inputs):
             try:
+                # Handle both dict and direct string inputs
                 if isinstance(inputs, dict):
                     return str(inputs.get("current_config", "No config provided"))
+                elif isinstance(inputs, str):
+                    # If it's already a string, it might be the config directly
+                    return inputs if inputs else "No config provided"
                 else:
-                    self.llm_logger.warning(f"⚠️ RAG: Expected dict for current_config, got {type(inputs)}")
-                    return "No config provided"
+                    self.llm_logger.warning(f"⚠️ RAG: Expected dict or str for current_config, got {type(inputs)}")
+                    return str(inputs) if inputs else "No config provided"
             except Exception as e:
                 self.llm_logger.error(f"❌ RAG: Error extracting current_config: {str(e)}")
                 return "Error extracting config"
