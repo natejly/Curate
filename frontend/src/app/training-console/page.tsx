@@ -129,17 +129,17 @@ function TrainingConsoleContent() {
   return (
     <div className="flex min-h-screen bg-black">
       {/* Main content area */}
-      <div className="flex-1 flex flex-col items-center justify-start p-12">
+      <div className="flex-1 flex flex-col items-center justify-start p-6">
         <div className="w-full max-w-7xl">
-          <div className="text-2xl font-bold text-white mb-6">Training Console</div>
+          <div className="text-xl font-bold text-white mb-4">Training Console</div>
 
           {/* Console Logs Section */}
-          <div className="bg-black border border-white/20 rounded-lg p-6 mb-6 relative">
-            <h3 className="text-lg font-semibold text-white mb-4">Training Logs</h3>
+          <div className="bg-black border border-white/20 rounded-lg p-4 mb-4 relative">
+            <h3 className="text-md font-semibold text-white mb-3">Training Logs</h3>
             <div
               ref={consoleRef}
               onScroll={handleScroll}
-              className="text-green-200 font-mono text-sm h-[400px] w-full overflow-y-auto bg-gray-900 p-4 rounded relative"
+              className="text-green-200 font-mono text-xs h-[300px] w-full overflow-y-auto bg-gray-900 p-3 rounded relative"
               style={{whiteSpace: 'pre-wrap'}}
             >
               {consoleLogs}
@@ -149,10 +149,10 @@ function TrainingConsoleContent() {
             {showScrollButton && (
               <button
                 onClick={scrollToBottom}
-                className="absolute bottom-20 right-6 bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors duration-200 shadow-lg flex items-center gap-2"
+                className="absolute bottom-16 right-4 bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 rounded text-xs font-medium transition-colors duration-200 shadow-lg flex items-center gap-1"
                 title="Scroll to bottom"
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
                 </svg>
                 Latest
@@ -162,11 +162,11 @@ function TrainingConsoleContent() {
           </div>
 
           {/* Live Metrics Section */}
-          <div className="mb-6">
+          <div className="mb-4">
             {sessionId ? (
               <LiveMetrics sessionId={sessionId} metricsData={metricsData} />
             ) : (
-              <div className="bg-black border border-white/20 rounded-lg p-6">
+              <div className="bg-black border border-white/20 rounded-lg p-4">
                 <div className="text-center text-gray-400">
                   <p>No session ID provided. Please start a training session first.</p>
                 </div>

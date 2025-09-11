@@ -317,38 +317,66 @@ export default function LiveMetrics({ sessionId, metricsData }: LiveMetricsProps
     currentOptimizationIterations: currentMetricsData?.optimization_iterations?.length || 0
   });
 
-  return (
-    <div className="bg-black border border-white/20 rounded-lg p-6">
-      <div className="mb-4 flex items-center justify-between">
-        <h3 className="text-xl font-bold text-white">Live Training Metrics</h3>
-        <div className="flex items-center gap-4">
-          <div className={`px-3 py-1 rounded text-sm ${
-            connectionStatus === 'connected' ? 'bg-green-600' :
-            connectionStatus === 'completed' ? 'bg-blue-600' :
-            'bg-yellow-600'
-          }`}>
-            {connectionStatus === 'connected' ? 'Live' :
-             connectionStatus === 'completed' ? 'Completed' :
-             'Connecting...'}
-          </div>
-          {currentMetricsData.stage_info && (
-            <div className="text-sm text-gray-400">
-              {currentMetricsData.stage_info.message}
+    return (
+      <div className="bg-black border border-white/20 rounded-lg p-4">
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="text-lg font-bold text-white">Live Training Metrics</h3>
+          <div className="flex items-center gap-3">
+            <div className={`px-2 py-1 rounded text-xs ${
+              connectionStatus === 'connected' ? 'bg-green-600' :
+              connectionStatus === 'completed' ? 'bg-blue-600' :
+              'bg-yellow-600'
+            }`}>
+              {connectionStatus === 'connected' ? 'Live' :
+               connectionStatus === 'completed' ? 'Completed' :
+               'Connecting...'}
             </div>
-          )}
+            {currentMetricsData.stage_info && (
+              <div className="text-xs text-gray-400">
+                {currentMetricsData.stage_info.message}
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+
+        {/* Final Test Results Section - Show prominently when available */}
+        {currentMetricsData.final_test_results && Object.keys(currentMetricsData.final_test_results).length > 0 && (
+          <div className="mb-4 bg-blue-900/30 border border-blue-500/50 rounded-lg p-4">
+            <h4 className="text-blue-400 font-semibold mb-3 flex items-center gap-2 text-sm">
+              Final Test Results
+            </h4>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {Object.entries(currentMetricsData.final_test_results)
+                .filter(([key]) => !['test_header'].includes(key))
+                .map(([key, value]) => (
+                <div key={key} className="text-center">
+                  <div className="text-blue-400 text-xs uppercase font-medium mb-1">
+                    {key.replace('_', ' ')}
+                  </div>
+                  <div className="text-white text-lg font-bold">
+                    {typeof value === 'number' 
+                      ? (key.toLowerCase().includes('acc') || key.toLowerCase().includes('f1') || key.toLowerCase().includes('auc') || key.toLowerCase().includes('precision') || key.toLowerCase().includes('recall'))
+                        ? `${(value * 100).toFixed(1)}%`
+                        : value.toFixed(4)
+                      : String(value)
+                    }
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
       {!hasData ? (
         <div className="text-center text-gray-400 py-8">
           <p>Training metrics will appear here once training begins...</p>
         </div>
       ) : (
-        <div className="space-y-6">
+        <div className="space-y-4">
           {/* Current Iteration Epoch Charts */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {/* Loss Chart */}
-            <div className="h-64">
+            <div className="h-48">
               <Line
                 data={createChartData(currentIterationMetrics, 'Training Loss', '#ef4444', 'loss')}
                 options={{
@@ -359,7 +387,7 @@ export default function LiveMetrics({ sessionId, metricsData }: LiveMetricsProps
                       display: true,
                       text: 'Current Iteration - Loss',
                       font: {
-                        size: 14,
+                        size: 12,
                         weight: 'bold' as const,
                       },
                       color: '#ffffff',
@@ -370,7 +398,7 @@ export default function LiveMetrics({ sessionId, metricsData }: LiveMetricsProps
             </div>
 
             {/* Accuracy Chart */}
-            <div className="h-64">
+            <div className="h-48">
               <Line
                 data={createChartData(currentIterationMetrics, 'Training Accuracy', '#10b981', 'accuracy')}
                 options={{
@@ -381,7 +409,7 @@ export default function LiveMetrics({ sessionId, metricsData }: LiveMetricsProps
                       display: true,
                       text: 'Current Iteration - Accuracy',
                       font: {
-                        size: 14,
+                        size: 12,
                         weight: 'bold' as const,
                       },
                       color: '#ffffff',
@@ -401,7 +429,7 @@ export default function LiveMetrics({ sessionId, metricsData }: LiveMetricsProps
             </div>
 
             {/* Validation Loss Chart */}
-            <div className="h-64">
+            <div className="h-48">
               <Line
                 data={createChartData(currentIterationMetrics, 'Validation Loss', '#f59e0b', 'val_loss')}
                 options={{
@@ -412,7 +440,7 @@ export default function LiveMetrics({ sessionId, metricsData }: LiveMetricsProps
                       display: true,
                       text: 'Current Iteration - Validation Loss',
                       font: {
-                        size: 14,
+                        size: 12,
                         weight: 'bold' as const,
                       },
                       color: '#ffffff',
@@ -423,7 +451,7 @@ export default function LiveMetrics({ sessionId, metricsData }: LiveMetricsProps
             </div>
 
             {/* Validation Accuracy Chart */}
-            <div className="h-64">
+            <div className="h-48">
               <Line
                 data={createChartData(currentIterationMetrics, 'Validation Accuracy', '#3b82f6', 'val_accuracy')}
                 options={{
@@ -434,7 +462,7 @@ export default function LiveMetrics({ sessionId, metricsData }: LiveMetricsProps
                       display: true,
                       text: 'Current Iteration - Validation Accuracy',
                       font: {
-                        size: 14,
+                        size: 12,
                         weight: 'bold' as const,
                       },
                       color: '#ffffff',
@@ -458,30 +486,30 @@ export default function LiveMetrics({ sessionId, metricsData }: LiveMetricsProps
 
       {/* AI Optimization Iterations */}
       {iterationHistory.iterations.length > 0 && (
-        <div className="mt-6">
-          <h4 className="text-blue-400 font-semibold mb-4 flex items-center gap-2">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div className="mt-4">
+          <h4 className="text-blue-400 font-semibold mb-3 flex items-center gap-2 text-sm">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
             </svg>
             AI Optimization Iterations
           </h4>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
             {iterationHistory.iterations.map((iteration, index) => (
-              <div key={index} className="p-4 bg-blue-900/20 border border-blue-500/30 rounded-lg">
-                <div className="flex items-center justify-between mb-3">
-                  <h5 className="text-blue-300 font-medium">
+              <div key={index} className="p-3 bg-blue-900/20 border border-blue-500/30 rounded-lg">
+                <div className="flex items-center justify-between mb-2">
+                  <h5 className="text-blue-300 font-medium text-sm">
                     Optimization {iteration.iteration}
                   </h5>
-                  <span className="text-xs text-blue-400 bg-blue-900/30 px-2 py-1 rounded">
+                  <span className="text-xs text-blue-400 bg-blue-900/30 px-1 py-0.5 rounded">
                     {iteration.training_type}
                   </span>
                 </div>
                 
                 {/* Test Results */}
-                <div className="mb-3">
-                  <div className="text-sm text-blue-400 mb-2">Performance:</div>
-                  <div className="grid grid-cols-2 gap-2 text-xs">
-                    {Object.entries(iteration.test_results).map(([key, value]) => (
+                <div className="mb-2">
+                  <div className="text-xs text-blue-400 mb-1">Performance:</div>
+                  <div className="grid grid-cols-1 gap-1 text-xs">
+                    {Object.entries(iteration.test_results).slice(0, 2).map(([key, value]) => (
                       <div key={key} className="text-blue-200">
                         <span className="text-blue-400 capitalize">{key.replace('_', ' ')}:</span>
                         {typeof value === 'number' && key.toLowerCase().includes('acc')
@@ -497,29 +525,17 @@ export default function LiveMetrics({ sessionId, metricsData }: LiveMetricsProps
 
                 {/* AI Recommendations Applied */}
                 {iteration.ai_recommendations && (
-                  <div className="mb-3">
-                    <div className="text-sm text-blue-400 mb-2">AI Changes:</div>
+                  <div className="mb-2">
+                    <div className="text-xs text-blue-400 mb-1">AI Changes:</div>
                     <div className="text-xs text-blue-300">
-                      Applied {iteration.ai_recommendations.recommendation_summary?.recommendations_applied || 0} of{' '}
-                      {iteration.ai_recommendations.recommendation_summary?.total_recommendations || 0} recommendations
+                      {iteration.ai_recommendations.recommendation_summary?.recommendations_applied || 0} of{' '}
+                      {iteration.ai_recommendations.recommendation_summary?.total_recommendations || 0} applied
                     </div>
-                    {iteration.ai_recommendations.applied_changes && 
-                     Object.keys(iteration.ai_recommendations.applied_changes).length > 0 && (
-                      <div className="mt-2">
-                        <div className="space-y-1">
-                          {Object.entries(iteration.ai_recommendations.applied_changes).slice(0, 3).map(([param, change]: [string, any]) => (
-                            <div key={param} className="text-xs text-blue-200">
-                              <span className="text-blue-400">{param}:</span> {change.original} → {change.applied}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
                   </div>
                 )}
 
                 {/* Timestamp */}
-                <div className="text-xs text-blue-500 border-t border-blue-500/20 pt-2">
+                <div className="text-xs text-blue-500 border-t border-blue-500/20 pt-1">
                   {new Date(iteration.timestamp).toLocaleTimeString()}
                 </div>
               </div>
@@ -529,23 +545,23 @@ export default function LiveMetrics({ sessionId, metricsData }: LiveMetricsProps
       )}
 
       {/* Live Iteration Summary Chart - Always visible at bottom */}
-      <div className="mt-8">
-        <h4 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <div className="mt-6">
+        <h4 className="text-md font-semibold text-white mb-3 flex items-center gap-2">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
           </svg>
           Hyperparameter Tuning Iterations
         </h4>
         
         {!iterationSummaryData.hasIterations && (
-          <div className="text-center text-gray-400 py-8 mb-4">
-            <p>Optimization results will appear here alongside the original training run...</p>
+          <div className="text-center text-gray-400 py-4 mb-3">
+            <p className="text-sm">Optimization results will appear here alongside the original training run...</p>
           </div>
         )}
         
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {/* Live Test Accuracy Across Iterations */}
-          <div className="h-80 bg-gray-900/50 border border-gray-700 rounded-lg p-4">
+          <div className="h-64 bg-gray-900/50 border border-gray-700 rounded-lg p-3">
             <Line
               data={{
                 labels: iterationSummaryData.labels,
@@ -556,8 +572,8 @@ export default function LiveMetrics({ sessionId, metricsData }: LiveMetricsProps
                   backgroundColor: '#10b98120',
                   tension: 0.1,
                   fill: false,
-                  pointRadius: 6,
-                  pointHoverRadius: 8,
+                  pointRadius: 5,
+                  pointHoverRadius: 7,
                   pointBackgroundColor: '#10b981',
                   pointBorderColor: '#ffffff',
                   pointBorderWidth: 2,
@@ -576,7 +592,7 @@ export default function LiveMetrics({ sessionId, metricsData }: LiveMetricsProps
                       ? `Test Accuracy Progress` 
                       : 'Test Accuracy (Waiting for data...)',
                     font: {
-                      size: 16,
+                      size: 14,
                       weight: 'bold' as const,
                     },
                     color: '#ffffff',
@@ -586,6 +602,9 @@ export default function LiveMetrics({ sessionId, metricsData }: LiveMetricsProps
                   x: {
                     ticks: {
                       color: '#ffffff',
+                      font: {
+                        size: 11,
+                      },
                     },
                     grid: {
                       color: '#374151',
@@ -594,10 +613,11 @@ export default function LiveMetrics({ sessionId, metricsData }: LiveMetricsProps
                   y: {
                     beginAtZero: false,
                     max: 1,
-                    // Adaptive scaling with accuracy cap at 1
                     ticks: {
                       color: '#ffffff',
-                      // No percent formatting, just show 0-1
+                      font: {
+                        size: 11,
+                      },
                     },
                     grid: {
                       color: '#374151',
@@ -605,14 +625,14 @@ export default function LiveMetrics({ sessionId, metricsData }: LiveMetricsProps
                   }
                 },
                 animation: {
-                  duration: 800,
+                  duration: 600,
                 },
               }}
             />
           </div>
 
           {/* Live Test Loss Across Iterations */}
-          <div className="h-80 bg-gray-900/50 border border-gray-700 rounded-lg p-4">
+          <div className="h-64 bg-gray-900/50 border border-gray-700 rounded-lg p-3">
             <Line
               data={{
                 labels: iterationSummaryData.labels,
@@ -623,8 +643,8 @@ export default function LiveMetrics({ sessionId, metricsData }: LiveMetricsProps
                   backgroundColor: '#ef444420',
                   tension: 0.1,
                   fill: false,
-                  pointRadius: 6,
-                  pointHoverRadius: 8,
+                  pointRadius: 5,
+                  pointHoverRadius: 7,
                   pointBackgroundColor: '#ef4444',
                   pointBorderColor: '#ffffff',
                   pointBorderWidth: 2,
@@ -643,7 +663,7 @@ export default function LiveMetrics({ sessionId, metricsData }: LiveMetricsProps
                       ? `Test Loss Progress` 
                       : 'Test Loss (Waiting for data...)',
                     font: {
-                      size: 16,
+                      size: 14,
                       weight: 'bold' as const,
                     },
                     color: '#ffffff',
@@ -653,6 +673,9 @@ export default function LiveMetrics({ sessionId, metricsData }: LiveMetricsProps
                   x: {
                     ticks: {
                       color: '#ffffff',
+                      font: {
+                        size: 11,
+                      },
                     },
                     grid: {
                       color: '#374151',
@@ -662,6 +685,9 @@ export default function LiveMetrics({ sessionId, metricsData }: LiveMetricsProps
                     beginAtZero: true,
                     ticks: {
                       color: '#ffffff',
+                      font: {
+                        size: 11,
+                      },
                     },
                     grid: {
                       color: '#374151',
@@ -669,7 +695,7 @@ export default function LiveMetrics({ sessionId, metricsData }: LiveMetricsProps
                   }
                 },
                 animation: {
-                  duration: 800,
+                  duration: 600,
                 },
               }}
             />

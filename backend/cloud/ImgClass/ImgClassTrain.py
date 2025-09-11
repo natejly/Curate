@@ -5,6 +5,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))  # Add b
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', '..'))  # Add repository root
 
 from datetime import datetime
+import numpy as np
 
 # Suppress TensorFlow verbose output
 import tensorflow as tf
@@ -12,6 +13,15 @@ tf.get_logger().setLevel('ERROR')
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 from tensorflow.keras import layers, models
 from tensorflow.keras.applications.efficientnet import preprocess_input
+
+# Add sklearn imports for additional metrics
+try:
+    from sklearn.metrics import roc_auc_score, f1_score, precision_score, recall_score, classification_report
+    SKLEARN_AVAILABLE = True
+except ImportError:
+    SKLEARN_AVAILABLE = False
+    print("sklearn not available - additional metrics (AUC, F1) will not be calculated")
+
 from ImgClass.ImgClassData import ImgClassData
 from TrainingLog import TrainingLog
 
@@ -205,7 +215,12 @@ class ImgClassTrainer:
             weight_decay=1e-4   # typical value, tune for your task
         ),
             loss="sparse_categorical_crossentropy",
-            metrics=["accuracy"]
+            metrics=[
+                "accuracy",
+                tf.keras.metrics.Precision(name='precision'),
+                tf.keras.metrics.Recall(name='recall'),
+                tf.keras.metrics.AUC(name='auc'),
+            ]
         )
         
         # Print trainable parameters after freezing
@@ -277,7 +292,12 @@ class ImgClassTrainer:
                 weight_decay=1e-4   # typical value, tune for your task
             ),
             loss="sparse_categorical_crossentropy",
-            metrics=["accuracy"]
+            metrics=[
+                "accuracy",
+                tf.keras.metrics.Precision(name='precision'),
+                tf.keras.metrics.Recall(name='recall'),
+                tf.keras.metrics.AUC(name='auc'),
+            ]
         )
         
         # Print trainable parameters after unfreezing
@@ -330,22 +350,57 @@ class ImgClassTrainer:
         if self.model is None:
             self.build()
             self.compile_stage1()
-        print("\n=== EVALUATE: Test set ===")
+        
+        print("\n" + "="*50)
+        print("EVALUATING MODEL ON TEST SET")
+        print("="*50)
+        
+        # Get standard metrics from model evaluation
         results = self.model.evaluate(self.test_ds, verbose=0)
         metrics = dict(zip(self.model.metrics_names, [float(r) for r in results]))
-        print(f"Test results: {metrics}")
+        
+        # Calculate additional metrics using sklearn if available
+        if SKLEARN_AVAILABLE:
+            # Get predictions for F1 calculation
+            print("Calculating additional metrics...")
+            y_pred = []
+            y_true = []
+            
+            for images, labels in self.test_ds:
+                predictions = self.model.predict(images, verbose=0)
+                y_pred.extend(np.argmax(predictions, axis=1))
+                y_true.extend(labels.numpy())
+            
+            # Calculate F1 score
+            f1 = f1_score(y_true, y_pred, average='weighted')
+            metrics['f1_score'] = float(f1)
+            
+            print(f"F1 Score calculated: {f1:.4f}")
+        
+        print("\nTEST RESULTS:")
+        for key, value in metrics.items():
+            print(f"  {key}: {value:.4f}")
+        print("-"*30)
+        
         self.metrics = metrics
 
-        # Also log to ensure it's captured
+        # Enhanced logging to ensure it's captured
         import logging
         logger = logging.getLogger()
-        logger.info(f"=== FINAL TEST RESULTS ===")
+        logger.info("\n" + "="*50)
+        logger.info("FINAL TEST RESULTS")
+        logger.info("="*50)
         for key, value in metrics.items():
-            logger.info(f"Test {key}: {value}")
+            logger.info(f"Test {key}: {value:.4f}")
+        logger.info("-"*50)
         
         # Ensure we have test accuracy for early stopping evaluation
         if 'accuracy' in metrics:
-            logger.info(f"Test accuracy for early stopping evaluation: {metrics['accuracy']:.4f}")
+            test_accuracy = metrics['accuracy']
+            print(f"Test accuracy: {test_accuracy:.4f}")
+            logger.info(f"Test accuracy for threshold evaluation: {test_accuracy:.4f}")
+        
+        return metrics
     
     def should_stop_early(self):
         """Check if training should stop early based on test accuracy threshold."""
