@@ -515,30 +515,20 @@ async def train_logs(session_id: str):
     def parse_test_results(log_line: str):
         """Parse final test results from log lines."""
         try:
-            # Look for various test result patterns - both old and new enhanced formats
+            # Look for various test result patterns
             patterns = [
-                r"Test results:\s*\{([^}]+)\}",  # Test results: {dict} (old format)
-                r"Test (\w+):\s*([0-9.]+)",       # Test loss: 0.1234 (old format)
-                r"FINAL TEST RESULTS",            # Header line (old format)
-                r"FINAL TEST RESULTS",            # Enhanced header line (new format)
-                r"EVALUATING MODEL ON TEST SET", # Enhanced evaluation start (new format)
-                r"TEST RESULTS:",              # Enhanced results section (new format)
-                r"\s+(\w+):\s*([0-9.]+)",        # Enhanced format: "  accuracy: 0.8534"
+                r"Test results:\s*\{([^}]+)\}",  # Test results: {dict}
+                r"Test (\w+):\s*([0-9.]+)",       # Test loss: 0.1234
+                r"FINAL TEST RESULTS",            # Header line
             ]
 
-            # Check for enhanced format metric lines (e.g., "  accuracy: 0.8534")
-            enhanced_metric_match = re.search(r"^\s+(\w+):\s*([0-9.]+)", log_line.strip())
-            if enhanced_metric_match:
-                key, value = enhanced_metric_match.groups()
-                return {key: float(value)}
-
-            # Check for old format individual metric lines 
+            # Check for individual metric lines first
             metric_match = re.search(r"Test (\w+):\s*([0-9.]+)", log_line)
             if metric_match:
                 key, value = metric_match.groups()
                 return {key: float(value)}
 
-            # Check for full results dictionary (old format)
+            # Check for full results dictionary
             dict_match = re.search(r"Test results:\s*\{([^}]+)\}", log_line)
             if dict_match:
                 results_str = dict_match.group(1)
@@ -558,8 +548,8 @@ async def train_logs(session_id: str):
                             results_dict[key] = value.strip("'\"")
                 return results_dict
 
-            # Check for headers (both old and new formats)
-            if "FINAL TEST RESULTS" in log_line or "EVALUATING MODEL ON TEST SET" in log_line:
+            # Check for header (we'll accumulate metrics after this)
+            if "FINAL TEST RESULTS" in log_line:
                 return {"test_header": True}
 
         except Exception as e:
