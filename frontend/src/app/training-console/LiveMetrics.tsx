@@ -260,22 +260,50 @@ export default function LiveMetrics({ sessionId, metricsData }: LiveMetricsProps
     // Add original training run results (the baseline before any optimization)
     if (iterationHistory.originalResults) {
       labels.push('Original Run');
+      
+      // Try multiple possible keys for TEST accuracy (from model.evaluate())
       const originalAcc = iterationHistory.originalResults.test_accuracy || 
                           iterationHistory.originalResults.accuracy || 0;
+      
+      // Try multiple possible keys for TEST loss (from model.evaluate())
       const originalLoss = iterationHistory.originalResults.test_loss || 
                            iterationHistory.originalResults.loss || 0;
-      testAccuracies.push(typeof originalAcc === 'number' ? originalAcc : 0);
-      testLosses.push(typeof originalLoss === 'number' ? originalLoss : 0);
+      
+      testAccuracies.push(typeof originalAcc === 'number' ? originalAcc : parseFloat(originalAcc) || 0);
+      testLosses.push(typeof originalLoss === 'number' ? originalLoss : parseFloat(originalLoss) || 0);
+      
+      // Debug log for original results
+      console.log('🔍 Original Results Debug:', {
+        rawData: iterationHistory.originalResults,
+        extractedAcc: originalAcc,
+        extractedLoss: originalLoss,
+        accType: typeof originalAcc,
+        lossType: typeof originalLoss
+      });
     }
     
     // Add optimization iteration results from preserved history
     if (iterationHistory.iterations.length > 0) {
       iterationHistory.iterations.forEach(iter => {
         labels.push(`Iteration ${iter.iteration}`);
-        const acc = iter.test_results.test_accuracy || iter.test_results.accuracy || 0;
-        const loss = iter.test_results.test_loss || iter.test_results.loss || 0;
-        testAccuracies.push(typeof acc === 'number' ? acc : 0);
-        testLosses.push(typeof loss === 'number' ? loss : 0);
+        
+        // Try multiple possible keys for TEST accuracy in iterations (from model.evaluate())
+        const acc = iter.test_results.test_accuracy || 
+                    iter.test_results.accuracy || 0;
+        
+        // Try multiple possible keys for TEST loss in iterations (from model.evaluate())
+        const loss = iter.test_results.test_loss || 
+                     iter.test_results.loss || 0;
+        
+        
+        // Debug log for iteration results
+        console.log(`🔍 Iteration ${iter.iteration} Results Debug:`, {
+          rawTestResults: iter.test_results,
+          extractedAcc: acc,
+          extractedLoss: loss,
+          accType: typeof acc,
+          lossType: typeof loss
+        });
       });
     }
 

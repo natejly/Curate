@@ -12,18 +12,32 @@ interface ModelInfo {
 }
 
 interface TrainingStats {
-  final_accuracy: number | null;
-  final_loss: number | null;
+  // Training metrics (from epochs)
+  final_training_accuracy: number | null;
+  final_training_loss: number | null;
   final_val_accuracy: number | null;
   final_val_loss: number | null;
   total_epochs: number;
   best_epoch: number | null;
+  
+  // Test metrics (from model.evaluate())
+  test_accuracy: number | null;
+  test_loss: number | null;
+  
+  // General info
   training_time: string | null;
   dataset_name: string | null;
+  dataset_path: string | null;
   img_size: any;
   num_classes: number | null;
   base_model_name: string | null;
-  model_info: any;
+  
+  // Model details
+  model_total_parameters: number | null;
+  model_trainable_parameters: number | null;
+  model_non_trainable_parameters: number | null;
+  base_model_layers: number | null;
+  base_model_trainable: boolean | null;
 }
 
 interface ModelInfoWithStats extends ModelInfo {
@@ -58,9 +72,8 @@ export default function ModelsPage() {
   const fetchModels = async () => {
     try {
       setLoading(true);
-      const response = await fetch(
-        `${process.env.BACKEND_URL || 'http://localhost:8000'}/list-models`
-      );
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+      const response = await fetch(`${backendUrl}/list-models`);
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -93,21 +106,33 @@ export default function ModelsPage() {
     if (!modelsData?.models) return;
 
     setStatsLoading(true);
+    console.log(`Fetching stats for ${modelsData.models.length} models...`);
+    
     const modelsWithStatsPromises = modelsData.models.map(async (model) => {
       try {
-        const response = await fetch(
-          `${process.env.BACKEND_URL || 'http://localhost:8000'}/model-stats/${model.session_id}`
-        );
+        const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+        const url = `${backendUrl}/model-stats/${model.session_id}`;
+        
+        console.log(`Fetching stats from: ${url}`);
+        
+        const response = await fetch(url, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        });
 
         if (response.ok) {
           const statsData = await response.json();
+          console.log(`Stats for ${model.session_id}:`, statsData);
           return { ...model, stats: statsData.stats };
         } else {
-          console.warn(`Failed to fetch stats for ${model.session_id}`);
+          const errorText = await response.text();
+          console.warn(`Failed to fetch stats for ${model.session_id} (${response.status}):`, errorText);
           return model;
         }
       } catch (error) {
-        console.warn(`Error fetching stats for ${model.session_id}:`, error);
+        console.error(`Error fetching stats for ${model.session_id}:`, error);
         return model;
       }
     });
@@ -121,8 +146,9 @@ export default function ModelsPage() {
     setDownloading(model.session_id);
     try {
       // Generate presigned URL for download using the actual filename
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
       const response = await fetch(
-        `${process.env.BACKEND_URL || 'http://localhost:8000'}/download-model/${model.session_id}?filename=${encodeURIComponent(model.filename)}`
+        `${backendUrl}/download-model/${model.session_id}?filename=${encodeURIComponent(model.filename)}`
       );
 
       if (!response.ok) {
@@ -245,16 +271,33 @@ export default function ModelsPage() {
                         <div className="bg-black/40 backdrop-blur-sm border border-white/20 rounded-xl p-4">
                           <h3 className="text-lg font-semibold text-white mb-3">Training Results</h3>
                           <div className="grid grid-cols-2 gap-4 text-sm">
-                            {model.stats.final_accuracy !== null && (
-                              <div>
-                                <span className="text-gray-400">Final Train Accuracy:</span>
-                                <div className="text-green-400 font-semibold">{(model.stats.final_accuracy * 100).toFixed(1)}%</div>
+                            {/* Test Metrics (Most Important) */}
+                            {model.stats.test_accuracy !== null && (
+                              <div className="col-span-2 bg-green-900/20 border border-green-500/30 rounded-lg p-3 mb-2">
+                                <span className="text-green-300 font-semibold">🎯 Test Accuracy:</span>
+                                <div className="text-green-400 font-bold text-lg">{(model.stats.test_accuracy * 100).toFixed(1)}%</div>
+                                <div className="text-xs text-green-300/70">Final performance on unseen test data</div>
                               </div>
                             )}
-                            {model.stats.final_loss !== null && (
+                            {model.stats.test_loss !== null && (
+                              <div className="col-span-2 bg-red-900/20 border border-red-500/30 rounded-lg p-3 mb-4">
+                                <span className="text-red-300 font-semibold">📊 Test Loss:</span>
+                                <div className="text-red-400 font-bold text-lg">{model.stats.test_loss.toFixed(4)}</div>
+                                <div className="text-xs text-red-300/70">Final loss on unseen test data</div>
+                              </div>
+                            )}
+                            
+                            {/* Training Metrics */}
+                            {model.stats.final_training_accuracy !== null && (
+                              <div>
+                                <span className="text-gray-400">Final Train Accuracy:</span>
+                                <div className="text-green-400 font-semibold">{(model.stats.final_training_accuracy * 100).toFixed(1)}%</div>
+                              </div>
+                            )}
+                            {model.stats.final_training_loss !== null && (
                               <div>
                                 <span className="text-gray-400">Final Train Loss:</span>
-                                <div className="text-yellow-400">{model.stats.final_loss.toFixed(4)}</div>
+                                <div className="text-yellow-400">{model.stats.final_training_loss.toFixed(4)}</div>
                               </div>
                             )}
                             {model.stats.final_val_accuracy !== null && (
@@ -285,7 +328,61 @@ export default function ModelsPage() {
                         </div>
                       ) : (
                         <div className="bg-black/40 backdrop-blur-sm border border-white/20 rounded-xl p-4 text-center">
-                          <div className="text-gray-400">Loading training statistics...</div>
+                          <div className="text-gray-400">
+                            {statsLoading ? 'Loading training statistics...' : 'No training statistics available'}
+                          </div>
+                          {!statsLoading && (
+                            <div className="text-xs text-gray-500 mt-2">
+                              Training log may not be available for this model
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Model Architecture Info */}
+                      {model.stats && (
+                        <div className="bg-black/40 backdrop-blur-sm border border-white/20 rounded-xl p-4">
+                          <h3 className="text-lg font-semibold text-white mb-3">Model Architecture</h3>
+                          <div className="grid grid-cols-2 gap-4 text-sm">
+                            {model.stats.base_model_name && (
+                              <div>
+                                <span className="text-gray-400">Base Model:</span>
+                                <div className="text-white font-semibold">{model.stats.base_model_name}</div>
+                              </div>
+                            )}
+                            {model.stats.model_total_parameters && (
+                              <div>
+                                <span className="text-gray-400">Total Parameters:</span>
+                                <div className="text-white">{model.stats.model_total_parameters.toLocaleString()}</div>
+                              </div>
+                            )}
+                            {model.stats.model_trainable_parameters && (
+                              <div>
+                                <span className="text-gray-400">Trainable Parameters:</span>
+                                <div className="text-green-400 font-semibold">{model.stats.model_trainable_parameters.toLocaleString()}</div>
+                              </div>
+                            )}
+                            {model.stats.model_non_trainable_parameters && (
+                              <div>
+                                <span className="text-gray-400">Frozen Parameters:</span>
+                                <div className="text-blue-400">{model.stats.model_non_trainable_parameters.toLocaleString()}</div>
+                              </div>
+                            )}
+                            {model.stats.base_model_layers && (
+                              <div>
+                                <span className="text-gray-400">Base Model Layers:</span>
+                                <div className="text-white">{model.stats.base_model_layers}</div>
+                              </div>
+                            )}
+                            {model.stats.base_model_trainable !== null && (
+                              <div>
+                                <span className="text-gray-400">Base Model Status:</span>
+                                <div className={model.stats.base_model_trainable ? "text-green-400" : "text-blue-400"}>
+                                  {model.stats.base_model_trainable ? "Trainable" : "Frozen"}
+                                </div>
+                              </div>
+                            )}
+                          </div>
                         </div>
                       )}
 
@@ -315,12 +412,6 @@ export default function ModelsPage() {
                               <div>
                                 <span className="text-gray-400">Classes:</span>
                                 <div className="text-white">{model.stats.num_classes}</div>
-                              </div>
-                            )}
-                            {model.stats.base_model_name && (
-                              <div>
-                                <span className="text-gray-400">Base Model:</span>
-                                <div className="text-white">{model.stats.base_model_name}</div>
                               </div>
                             )}
                           </div>

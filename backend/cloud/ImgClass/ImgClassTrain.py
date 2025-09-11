@@ -369,19 +369,48 @@ class ImgClassTrainer:
     
     def getParams(self):
         params = {
+            # Model Architecture
             "base_model_name": self.base_model_name,
+            "num_classes": self.NUM_CLASSES,
+            "img_size": self.IMG_SIZE,
+            "custom_img_size": self.custom_img_size,
+            
+            # Training Configuration
             "batch_size": self.batch_size,
             "initial_learning_rate": self.initial_learning_rate,
             "initial_epochs": self.initial_epochs,
             "dual_stage": self.dual_stage,
-            "img_size": self.IMG_SIZE,
-            "custom_img_size": self.custom_img_size,
             "unfreeze_percent": self.unfreeze_percent,
             "early_stop_threshold": self.early_stop_threshold,
             "max_iterations": self.max_iterations,
+            
+            # Dataset Information
             "dataset_name": getattr(self, 'dataset_name', None),
-            "num_classes": self.NUM_CLASSES,
+            "dataset_path": getattr(self, 'dataset_path', None),
         }
+        
+        # Add model details if model is built
+        if hasattr(self, 'model') and self.model is not None:
+            try:
+                total_params = self.model.count_params()
+                trainable_params = sum([tf.keras.backend.count_params(w) for w in self.model.trainable_weights])
+                params.update({
+                    "model_total_parameters": int(total_params),
+                    "model_trainable_parameters": int(trainable_params),
+                    "model_non_trainable_parameters": int(total_params - trainable_params),
+                })
+            except Exception as e:
+                print(f"Warning: Could not get model parameters: {e}")
+        
+        # Add base model details if available
+        if hasattr(self, 'base_model') and self.base_model is not None:
+            try:
+                params.update({
+                    "base_model_layers": len(self.base_model.layers),
+                    "base_model_trainable": self.base_model.trainable,
+                })
+            except Exception as e:
+                print(f"Warning: Could not get base model details: {e}")
         
         # Only include fine-tuning parameters if dual_stage is True
         if self.dual_stage:
