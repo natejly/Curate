@@ -11,7 +11,8 @@ from typing import Dict, Any, Optional, List
 
 # Load environment variables
 from dotenv import load_dotenv
-load_dotenv()
+# Load .env file from backend directory (parent of this cloud directory)
+load_dotenv(os.path.join(os.path.dirname(__file__), '..', '.env'))
 
 # LangChain / Pinecone
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
@@ -70,45 +71,45 @@ class TrainingAdvisor:
         knowledge_index_name = os.getenv("PINECONE_KNOWLEDGE_INDEX_NAME", "curate-knowledge")
         pinecone_api_key = os.getenv("PINECONE_API_KEY")
         if not pinecone_api_key:
-            self.llm_logger.warning("⚠️ RAG: PINECONE_API_KEY not found - RAG disabled")
+            logger.warning("⚠️ RAG: PINECONE_API_KEY not found - RAG disabled")
             self.vector_store = None
             self.retriever = None
         else:
             try:
-                self.llm_logger.info(f"🔗 RAG: Initializing Pinecone vector store with index '{knowledge_index_name}'")
+                logger.info(f"🔗 RAG: Initializing Pinecone vector store with index '{knowledge_index_name}'")
                 self.vector_store = PineconeVectorStore(
                     index_name=knowledge_index_name,
                     embedding=self.embeddings,
                     pinecone_api_key=pinecone_api_key,
                 )
                 self.retriever = self.vector_store.as_retriever(search_kwargs={"k": 5})
-                self.llm_logger.info("✅ RAG: Successfully initialized Pinecone vector store and retriever (k=5)")
+                logger.info("✅ RAG: Successfully initialized Pinecone vector store and retriever (k=5)")
                 
                 # Test retriever connectivity only if we have OpenAI API key too
                 if self.api_key:
                     try:
                         test_query = "test connection"
                         test_results = self.retriever.invoke(test_query)
-                        self.llm_logger.info(f"✅ RAG: Retriever connectivity test successful - found {len(test_results)} documents")
+                        logger.info(f"✅ RAG: Retriever connectivity test successful - found {len(test_results)} documents")
                     except Exception as test_e:
-                        self.llm_logger.warning(f"⚠️ RAG: Retriever connectivity test failed: {str(test_e)}")
+                        logger.warning(f"⚠️ RAG: Retriever connectivity test failed: {str(test_e)}")
                 else:
-                    self.llm_logger.warning("⚠️ RAG: Skipping connectivity test - no OpenAI API key for embeddings")
+                    logger.warning("⚠️ RAG: Skipping connectivity test - no OpenAI API key for embeddings")
                     
             except Exception as e:
-                self.llm_logger.error(f"❌ RAG: Failed to initialize Pinecone vector store: {str(e)}")
+                logger.error(f"❌ RAG: Failed to initialize Pinecone vector store: {str(e)}")
                 self.vector_store = None
                 self.retriever = None
 
         # Chains
-        self.llm_logger.info("🔧 RAG: Setting up LangChain chains with RAG context integration")
+        logger.info("🔧 RAG: Setting up LangChain chains with RAG context integration")
         self._setup_chains()
-        self.llm_logger.info("✅ RAG: LangChain chains setup complete")
+        logger.info("✅ RAG: LangChain chains setup complete")
 
     # ---------- Chain setup ----------
     def _format_docs(self, docs: List[Document]) -> str:
         """Format RAG documents with comprehensive logging."""
-        self.llm_logger.info(f"📄 RAG: Formatting {len(docs)} retrieved documents")
+        logger.info(f"📄 RAG: Formatting {len(docs)} retrieved documents")
         
         parts = []
         categories_found = {}
@@ -129,20 +130,20 @@ class TrainingAdvisor:
             formatted_doc = f"[{category}/{topic}] {d.page_content}"
             parts.append(formatted_doc)
             
-            self.llm_logger.debug(f"📄 RAG Doc {i+1}: category='{category}', topic='{topic}', length={content_length}chars")
+            logger.debug(f"📄 RAG Doc {i+1}: category='{category}', topic='{topic}', length={content_length}chars")
             
             # Log document metadata if available
             if meta:
                 meta_summary = {k: v for k, v in meta.items() if k not in ['category', 'topic']}
                 if meta_summary:
-                    self.llm_logger.debug(f"📄 RAG Doc {i+1} metadata: {meta_summary}")
+                    logger.debug(f"📄 RAG Doc {i+1} metadata: {meta_summary}")
         
         # Log summary statistics
-        self.llm_logger.info(f"📄 RAG Summary: {len(docs)} docs, {total_content_length} total chars")
-        self.llm_logger.info(f"📄 RAG Categories found: {dict(categories_found)}")
+        logger.info(f"📄 RAG Summary: {len(docs)} docs, {total_content_length} total chars")
+        logger.info(f"📄 RAG Categories found: {dict(categories_found)}")
         
         formatted_context = "\n\n".join(parts)
-        self.llm_logger.debug(f"📄 RAG Final context length: {len(formatted_context)} characters")
+        logger.debug(f"📄 RAG Final context length: {len(formatted_context)} characters")
         
         return formatted_context
 
@@ -200,7 +201,7 @@ Required JSON structure:
                     # If the entire input is a string, use it as dataset_info
                     dataset_info = inputs
                 else:
-                    self.llm_logger.warning(f"⚠️ RAG: Unexpected input type for context retrieval: {type(inputs)}")
+                    logger.warning(f"⚠️ RAG: Unexpected input type for context retrieval: {type(inputs)}")
                     dataset_info = str(inputs) if inputs else ""
                 
                 if self.retriever:
@@ -208,29 +209,29 @@ Required JSON structure:
                     dataset_preview = dataset_info[:200]
                     search_query = f"hyperparameter optimization {dataset_preview}"
                     
-                    self.llm_logger.info(f"🔍 RAG: Searching for hyperparameter context")
-                    self.llm_logger.debug(f"🔍 RAG Query: '{search_query[:100]}...' (truncated)")
+                    logger.info(f"🔍 RAG: Searching for hyperparameter context")
+                    logger.debug(f"🔍 RAG Query: '{search_query[:100]}...' (truncated)")
                     
                     try:
                         docs = self.retriever.invoke(search_query)
-                        self.llm_logger.info(f"🔍 RAG: Retrieved {len(docs)} documents for hyperparameter query")
+                        logger.info(f"🔍 RAG: Retrieved {len(docs)} documents for hyperparameter query")
                         
                         # Log document scores if available
                         for i, doc in enumerate(docs):
                             if hasattr(doc, 'metadata') and 'score' in doc.metadata:
                                 score = doc.metadata['score']
-                                self.llm_logger.debug(f"🔍 RAG Doc {i+1} similarity score: {score:.4f}")
+                                logger.debug(f"🔍 RAG Doc {i+1} similarity score: {score:.4f}")
                         
                         return self._format_docs(docs)
                         
                     except Exception as e:
-                        self.llm_logger.error(f"❌ RAG: Failed to retrieve hyperparameter context: {str(e)}")
+                        logger.error(f"❌ RAG: Failed to retrieve hyperparameter context: {str(e)}")
                         return "No relevant context available due to retrieval error."
                 else:
-                    self.llm_logger.warning("⚠️ RAG: No retriever available for hyperparameter context")
+                    logger.warning("⚠️ RAG: No retriever available for hyperparameter context")
                     return "No RAG context available - retriever not initialized."
             except Exception as e:
-                self.llm_logger.error(f"❌ RAG: Error in context retrieval: {str(e)}")
+                logger.error(f"❌ RAG: Error in context retrieval: {str(e)}")
                 return "Error retrieving context."
 
         # Safe input extraction functions
@@ -243,10 +244,10 @@ Required JSON structure:
                     # If it's already a string, it might be the dataset_info directly
                     return inputs if inputs else "No dataset info provided"
                 else:
-                    self.llm_logger.warning(f"⚠️ RAG: Expected dict or str for dataset_info, got {type(inputs)}")
+                    logger.warning(f"⚠️ RAG: Expected dict or str for dataset_info, got {type(inputs)}")
                     return str(inputs) if inputs else "No dataset info provided"
             except Exception as e:
-                self.llm_logger.error(f"❌ RAG: Error extracting dataset_info: {str(e)}")
+                logger.error(f"❌ RAG: Error extracting dataset_info: {str(e)}")
                 return "Error extracting dataset info"
 
         def safe_get_current_config(inputs):
@@ -258,10 +259,10 @@ Required JSON structure:
                     # If it's already a string, it might be the config directly
                     return inputs if inputs else "No config provided"
                 else:
-                    self.llm_logger.warning(f"⚠️ RAG: Expected dict or str for current_config, got {type(inputs)}")
+                    logger.warning(f"⚠️ RAG: Expected dict or str for current_config, got {type(inputs)}")
                     return str(inputs) if inputs else "No config provided"
             except Exception as e:
-                self.llm_logger.error(f"❌ RAG: Error extracting current_config: {str(e)}")
+                logger.error(f"❌ RAG: Error extracting current_config: {str(e)}")
                 return "Error extracting config"
 
         self.hyperparam_chain = (
@@ -304,7 +305,7 @@ Focus on hyperparameter optimization first. Only recommend architecture changes 
                     # If the entire input is a string, use it as training_log
                     training_log = inputs
                 else:
-                    self.llm_logger.warning(f"⚠️ RAG: Unexpected input type for optimization context: {type(inputs)}")
+                    logger.warning(f"⚠️ RAG: Unexpected input type for optimization context: {type(inputs)}")
                     training_log = str(inputs) if inputs else ""
                 
                 if self.retriever:
@@ -312,8 +313,8 @@ Focus on hyperparameter optimization first. Only recommend architecture changes 
                     training_preview = training_log[:200]
                     search_query = f"training optimization {training_preview}"
                     
-                    self.llm_logger.info(f"🔍 RAG: Searching for optimization context")
-                    self.llm_logger.debug(f"🔍 RAG Query: '{search_query[:100]}...' (truncated)")
+                    logger.info(f"🔍 RAG: Searching for optimization context")
+                    logger.debug(f"🔍 RAG Query: '{search_query[:100]}...' (truncated)")
                     
                     try:
                         docs = self.retriever.invoke(search_query)
@@ -1391,3 +1392,6 @@ def create_advisor_summary(recommendations: Dict[str, Any]) -> str:
         return f"Error creating summary: {str(e)}"
     
 
+if __name__ == "__main__":
+    import json
+    test = TrainingAdvisor()

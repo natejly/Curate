@@ -337,3 +337,6 @@ class AIWorkflowManager:
             logger.info("Image size or model changed, rebuilding trainer components...")
             trainer.build_datasets()
             trainer.build()
+if __name__ == "__main__":
+    import json
+    test = TrainingAdvisor()
