@@ -111,64 +111,6 @@ async def debug_training_log(session_id: str):
     except Exception as e:
         return {"error": f"Failed to debug training log: {str(e)}"}
 
-@app.get("/debug-test-metrics/{session_id}")
-async def debug_test_metrics(session_id: str):
-    """Debug endpoint to analyze test metrics parsing and display."""
-    try:
-        # Get model stats which includes parsed test metrics
-        stats_response = await get_model_stats(session_id)
-        
-        # Get raw training log for comparison
-        debug_log_response = await debug_training_log(session_id)
-        
-        # Try to extract test metrics from raw log
-        raw_test_metrics = {}
-        if "log_content" in debug_log_response:
-            try:
-                log_data = json.loads(debug_log_response["log_content"])
-                
-                # Extract test metrics from each iteration
-                for iteration_key, iteration_data in log_data.items():
-                    if isinstance(iteration_data, dict):
-                        iteration_info = {
-                            "iteration_key": iteration_key,
-                            "training_type": iteration_data.get("training_type"),
-                            "optimization_iteration": iteration_data.get("optimization_iteration"),
-                            "test_metrics": None,
-                            "test_data": None
-                        }
-                        
-                        # Check for test metrics in different locations
-                        if "test_metrics" in iteration_data:
-                            iteration_info["test_metrics"] = iteration_data["test_metrics"]
-                        elif "test" in iteration_data:
-                            iteration_info["test_data"] = iteration_data["test"]
-                        
-                        if iteration_info["test_metrics"] or iteration_info["test_data"]:
-                            raw_test_metrics[iteration_key] = iteration_info
-            except Exception as parse_error:
-                raw_test_metrics["parse_error"] = str(parse_error)
-        
-        return {
-            "session_id": session_id,
-            "parsed_stats": stats_response,
-            "raw_test_metrics": raw_test_metrics,
-            "debug_info": {
-                "stats_available": "error" not in stats_response,
-                "raw_log_available": "log_content" in debug_log_response,
-                "test_metrics_found": len([k for k in raw_test_metrics.keys() if k != "parse_error"]),
-                "parsing_tips": [
-                    "Check if test metrics are stored in 'test' or 'test_metrics' keys",
-                    "Verify metric names match expected format (accuracy, loss, etc.)",
-                    "Ensure numeric values are properly formatted",
-                    "Look for optimization_iteration markers"
-                ]
-            }
-        }
-        
-    except Exception as e:
-        return {"error": f"Failed to debug test metrics: {str(e)}", "session_id": session_id}
-
 @app.get("/model-stats/{session_id}")
 async def get_model_stats(session_id: str):
     """Get training statistics for a specific model from local training log or S3."""
@@ -243,32 +185,17 @@ def parse_training_stats(log_data):
     """Parse training log data to extract final statistics."""
     try:
         stats = {
-            # Training metrics (from epochs)
-            "final_training_accuracy": None,
-            "final_training_loss": None,
+            "final_accuracy": None,
+            "final_loss": None,
             "final_val_accuracy": None,
             "final_val_loss": None,
             "total_epochs": 0,
             "best_epoch": None,
-            
-            # Test metrics (from model.evaluate())
-            "test_accuracy": None,
-            "test_loss": None,
-            
-            # General info
             "training_time": None,
             "dataset_name": None,
-            "dataset_path": None,
             "img_size": None,
             "num_classes": None,
             "base_model_name": None,
-            
-            # Model details
-            "model_total_parameters": None,
-            "model_trainable_parameters": None,
-            "model_non_trainable_parameters": None,
-            "base_model_layers": None,
-            "base_model_trainable": None,
         }
 
         # Try to extract from the log data structure
@@ -289,17 +216,9 @@ def parse_training_stats(log_data):
                 if 'params' in latest_iteration:
                     params = latest_iteration['params']
                     stats['dataset_name'] = params.get('dataset_name')
-                    stats['dataset_path'] = params.get('dataset_path')
                     stats['img_size'] = params.get('img_size')
                     stats['num_classes'] = params.get('num_classes')
                     stats['base_model_name'] = params.get('base_model_name')
-                    
-                    # Extract model details
-                    stats['model_total_parameters'] = params.get('model_total_parameters')
-                    stats['model_trainable_parameters'] = params.get('model_trainable_parameters')
-                    stats['model_non_trainable_parameters'] = params.get('model_non_trainable_parameters')
-                    stats['base_model_layers'] = params.get('base_model_layers')
-                    stats['base_model_trainable'] = params.get('base_model_trainable')
 
                 # Extract training history based on training type
                 training_type = latest_iteration.get('training_type', 'single_stage')
@@ -317,11 +236,11 @@ def parse_training_stats(log_data):
                     history = latest_iteration.get('logs')
 
                 if history:
-                    # Get final TRAINING metrics (from epochs)
+                    # Get final metrics
                     if 'accuracy' in history and isinstance(history['accuracy'], list) and history['accuracy']:
-                        stats['final_training_accuracy'] = history['accuracy'][-1]
+                        stats['final_accuracy'] = history['accuracy'][-1]
                     if 'loss' in history and isinstance(history['loss'], list) and history['loss']:
-                        stats['final_training_loss'] = history['loss'][-1]
+                        stats['final_loss'] = history['loss'][-1]
                     if 'val_accuracy' in history and isinstance(history['val_accuracy'], list) and history['val_accuracy']:
                         stats['final_val_accuracy'] = history['val_accuracy'][-1]
                     if 'val_loss' in history and isinstance(history['val_loss'], list) and history['val_loss']:
@@ -336,26 +255,31 @@ def parse_training_stats(log_data):
                         best_val_acc = max(history['val_accuracy'])
                         stats['best_epoch'] = history['val_accuracy'].index(best_val_acc) + 1
 
-                # Extract TEST metrics if available (from model.evaluate())
+                # Extract test metrics if available
                 if training_type == 'two_stage' and 'test_metrics' in latest_iteration:
                     test_metrics = latest_iteration['test_metrics']
                     if test_metrics:
-                        # Store test metrics separately from training metrics
+                        # Override with test metrics if available
                         if 'accuracy' in test_metrics:
-                            stats['test_accuracy'] = test_metrics['accuracy']
+                            stats['final_accuracy'] = test_metrics['accuracy']
                         if 'loss' in test_metrics:
-                            stats['test_loss'] = test_metrics['loss']
-                        # Note: test metrics shouldn't have val_accuracy/val_loss as those are training concepts
-                        
+                            stats['final_loss'] = test_metrics['loss']
+                        if 'val_accuracy' in test_metrics:
+                            stats['final_val_accuracy'] = test_metrics['val_accuracy']
+                        if 'val_loss' in test_metrics:
+                            stats['final_val_loss'] = test_metrics['val_loss']
                 elif training_type == 'single_stage' and 'test' in latest_iteration:
                     test_metrics = latest_iteration['test']
                     if test_metrics:
-                        # Store test metrics separately from training metrics
+                        # Override with test metrics if available
                         if 'accuracy' in test_metrics:
-                            stats['test_accuracy'] = test_metrics['accuracy']
+                            stats['final_accuracy'] = test_metrics['accuracy']
                         if 'loss' in test_metrics:
-                            stats['test_loss'] = test_metrics['loss']
-                        # Note: test metrics shouldn't have val_accuracy/val_loss as those are training concepts
+                            stats['final_loss'] = test_metrics['loss']
+                        if 'val_accuracy' in test_metrics:
+                            stats['final_val_accuracy'] = test_metrics['val_accuracy']
+                        if 'val_loss' in test_metrics:
+                            stats['final_val_loss'] = test_metrics['val_loss']
 
         return stats
 
@@ -589,70 +513,47 @@ async def train_logs(session_id: str):
         return None
 
     def parse_test_results(log_line: str):
-        """Parse final test results from log lines - ONLY from model.evaluate() calls, not training epochs."""
+        """Parse final test results from log lines."""
         try:
-            # STRICT PARSING: Only parse test results from actual model.evaluate() calls
-            
-            # Pattern 1: Look for evaluation section start marker
-            if "=== EVALUATE: Test set ===" in log_line:
-                print(f"[DEBUG] Found test set evaluation start marker")
-                return {"evaluation_start": True}
-            
-            # Pattern 2: EXACT match for the evaluate() output dictionary
-            # Format: Test results: {'loss': 0.1234, 'accuracy': 0.8765}
-            # This is from ImgClassTrain.py line 336: print(f"Test results: {metrics}")
-            # MUST start with exactly "Test results:" - not just contain it
-            if log_line.strip().startswith("Test results:") and "{" in log_line and "}" in log_line:
-                dict_match = re.search(r"Test results:\s*\{([^}]+)\}", log_line)
-                if dict_match:
-                    results_str = dict_match.group(1)
-                    print(f"[DEBUG] Found EXACT 'Test results:' dictionary: {results_str}")
-                    
-                    # Parse the dictionary string - handle both quoted and unquoted keys
-                    results_dict = {}
-                    # Match patterns like 'loss': 0.1234 or loss: 0.1234
-                    pairs = re.findall(r"['\"]?(\w+)['\"]?\s*:\s*([0-9.eE-]+)", results_str)
-                    for key, value in pairs:
+            # Look for various test result patterns
+            patterns = [
+                r"Test results:\s*\{([^}]+)\}",  # Test results: {dict}
+                r"Test (\w+):\s*([0-9.]+)",       # Test loss: 0.1234
+                r"FINAL TEST RESULTS",            # Header line
+            ]
+
+            # Check for individual metric lines first
+            metric_match = re.search(r"Test (\w+):\s*([0-9.]+)", log_line)
+            if metric_match:
+                key, value = metric_match.groups()
+                return {key: float(value)}
+
+            # Check for full results dictionary
+            dict_match = re.search(r"Test results:\s*\{([^}]+)\}", log_line)
+            if dict_match:
+                results_str = dict_match.group(1)
+                # Parse the dictionary string
+                results_dict = {}
+                # Split by comma and parse key-value pairs
+                pairs = [pair.strip() for pair in results_str.split(',')]
+                for pair in pairs:
+                    if ':' in pair:
+                        key, value = pair.split(':', 1)
+                        key = key.strip().strip("'\"")
+                        value = value.strip()
                         try:
+                            # Try to convert to float
                             results_dict[key] = float(value)
                         except ValueError:
-                            results_dict[key] = value
-                    
-                    print(f"[DEBUG] Parsed ACTUAL test results from model.evaluate(): {results_dict}")
-                    return results_dict
+                            results_dict[key] = value.strip("'\"")
+                return results_dict
 
-            # Pattern 3: FINAL TEST RESULTS header from logging
-            # This is from ImgClassTrain.py line 342: logger.info(f"=== FINAL TEST RESULTS ===")
-            if "=== FINAL TEST RESULTS ===" in log_line:
-                print(f"[DEBUG] Found FINAL TEST RESULTS logging header")
+            # Check for header (we'll accumulate metrics after this)
+            if "FINAL TEST RESULTS" in log_line:
                 return {"test_header": True}
-            
-            # Pattern 4: Individual test metric lines from logging (VERY STRICT)
-            # Format: Test loss: 0.1234 or Test accuracy: 0.8765
-            # This is from ImgClassTrain.py line 344: logger.info(f"Test {key}: {value}")
-            # EXCLUDE anything that looks like epoch training (contains "Epoch", "epoch", "=", or comma-separated values)
-            if not any(word in log_line for word in ["Epoch", "epoch", "=", ","]):
-                # Very strict pattern - must start with "Test " followed by metric name and colon
-                metric_match = re.search(r"^.*Test\s+(\w+):\s*([0-9.eE-]+).*$", log_line)
-                if metric_match:
-                    key, value = metric_match.groups()
-                    result = {key: float(value)}
-                    print(f"[DEBUG] Found individual test metric from logging: {result}")
-                    return result
-
-            # Pattern 5: Test accuracy for early stopping evaluation line
-            # This is from ImgClassTrain.py line 348: logger.info(f"Test accuracy for early stopping evaluation: {metrics['accuracy']:.4f}")
-            early_stop_match = re.search(r"Test accuracy for early stopping evaluation:\s*([0-9.eE-]+)", log_line)
-            if early_stop_match:
-                accuracy = float(early_stop_match.group(1))
-                result = {"accuracy": accuracy}
-                print(f"[DEBUG] Found early stopping test accuracy: {result}")
-                return result
 
         except Exception as e:
-            print(f"[ERROR] Error parsing test results from line '{log_line.strip()}': {e}")
-            import traceback
-            traceback.print_exc()
+            print(f"Error parsing test results: {e}")
         return None
 
     def format_log_line(log_line: str) -> str:
@@ -810,8 +711,7 @@ async def train_logs(session_id: str):
             "stage_info": None,
             "final_test_results": None,
             "optimization_iterations": [],
-            "current_optimization_iteration": 0,  # Track current optimization iteration
-            "in_evaluation_phase": False  # Track when we're parsing actual test evaluation results
+            "current_optimization_iteration": 0  # Track current optimization iteration
         }
 
         # Keep waiting and retrying indefinitely until logs appear or training finishes
@@ -937,29 +837,20 @@ async def train_logs(session_id: str):
                             # Parse test results
                             test_results = parse_test_results(decoded_line)
                             if test_results:
-                                # Handle evaluation phase markers
-                                if test_results.get("evaluation_start"):
-                                    metrics_data["in_evaluation_phase"] = True
-                                    print(f"[DEBUG] Entered test evaluation phase")
-                                elif test_results.get("test_header"):
-                                    # Initialize test results collection and mark evaluation phase
-                                    metrics_data["in_evaluation_phase"] = True
+                                if test_results.get("test_header"):
+                                    # Initialize test results collection
                                     metrics_data["final_test_results"] = {}
-                                    print(f"[DEBUG] Started collecting FINAL test results (from model.evaluate())")
-                                elif len(test_results) == 1 and not any(k in test_results for k in ["test_header", "evaluation_start"]):
-                                    # Single metric from evaluation phase - accumulate it
-                                    if metrics_data.get("in_evaluation_phase"):
-                                        if not metrics_data.get("final_test_results"):
-                                            metrics_data["final_test_results"] = {}
-                                        metrics_data["final_test_results"].update(test_results)
-                                        print(f"[DEBUG] Added test metric from evaluation: {test_results}")
-                                    else:
-                                        print(f"[DEBUG] Ignoring test metric outside evaluation phase: {test_results}")
+                                    print(f"[DEBUG] Started collecting test results")
+                                elif len(test_results) == 1 and not test_results.get("test_header"):
+                                    # Single metric - accumulate it
+                                    if not metrics_data.get("final_test_results"):
+                                        metrics_data["final_test_results"] = {}
+                                    metrics_data["final_test_results"].update(test_results)
+                                    print(f"[DEBUG] Added test metric: {test_results}")
                                 else:
-                                    # Full results dictionary from model.evaluate()
+                                    # Full results dictionary
                                     metrics_data["final_test_results"] = test_results
-                                    metrics_data["in_evaluation_phase"] = False  # Reset after getting full results
-                                    print(f"[DEBUG] Parsed complete test results from model.evaluate(): {test_results}")
+                                    print(f"[DEBUG] Parsed full test results: {test_results}")
 
                                 # Check if we have complete test results and are in an optimization iteration
                                 if (metrics_data["current_optimization_iteration"] > 0 and 
@@ -1105,7 +996,7 @@ async def train(session_id: str):
         }
         output_path = f"s3://{aws_helper.bucket}/curate/output/"
         estimator = aws_helper.start_sagemaker_executor(
-            instance_type="ml.g5.4xlarge",
+            instance_type="ml.g4dn.2xlarge",
             instance_count=1,
             hyperparameters=hyperparameters,
             output_path=output_path,
@@ -1578,7 +1469,7 @@ async def train_s3(zip_name: str, request: Request, session_id: Optional[str] = 
         }
         output_path = f"s3://{bucket}/curate/output/"
         estimator = aws_helper.start_sagemaker_executor(
-            instance_type="ml.g5.4xlarge",
+            instance_type="ml.g4dn.2xlarge",
             instance_count=1,
             hyperparameters=hyperparameters,
             output_path=output_path,

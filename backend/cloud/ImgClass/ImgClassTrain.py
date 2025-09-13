@@ -133,17 +133,25 @@ class ImgClassTrainer:
 
     @staticmethod
     def bucket_dims(img_dims):
-        #TODO: Fix bucketing 
+        """
+        Bucket image dimensions to standard sizes for efficient training.
+        Uses the larger dimension to determine the bucket size.
+        """
+        if not img_dims or len(img_dims) != 2:
+            return (224, 224)  # Safe default
+            
+        max_dim = max(img_dims[0], img_dims[1])
         
-        if img_dims[0] < 128:
-            dim = max(64, max(img_dims[0], img_dims[1]))
-            return (dim, dim)
-        if img_dims[0] < 256:
-            return (128, 128)
-        elif img_dims[0] < 512:
-            return (256, 256)
+        if max_dim <= 32:
+            return (64, 64)    # Upscale very small images (e.g., CIFAR-10)
+        elif max_dim < 128:
+            return (128, 128)  # Small images
+        elif max_dim < 256:
+            return (224, 224)  # Standard size for most models
+        elif max_dim < 512:
+            return (256, 256)  # Medium resolution
         else:
-            return (512, 512)
+            return (512, 512)  # High resolution
 
     def get_base_model(self):
         ModelClass = getattr(tf.keras.applications, self.base_model_name)
@@ -369,48 +377,19 @@ class ImgClassTrainer:
     
     def getParams(self):
         params = {
-            # Model Architecture
             "base_model_name": self.base_model_name,
-            "num_classes": self.NUM_CLASSES,
-            "img_size": self.IMG_SIZE,
-            "custom_img_size": self.custom_img_size,
-            
-            # Training Configuration
             "batch_size": self.batch_size,
             "initial_learning_rate": self.initial_learning_rate,
             "initial_epochs": self.initial_epochs,
             "dual_stage": self.dual_stage,
+            "img_size": self.IMG_SIZE,
+            "custom_img_size": self.custom_img_size,
             "unfreeze_percent": self.unfreeze_percent,
             "early_stop_threshold": self.early_stop_threshold,
             "max_iterations": self.max_iterations,
-            
-            # Dataset Information
             "dataset_name": getattr(self, 'dataset_name', None),
-            "dataset_path": getattr(self, 'dataset_path', None),
+            "num_classes": self.NUM_CLASSES,
         }
-        
-        # Add model details if model is built
-        if hasattr(self, 'model') and self.model is not None:
-            try:
-                total_params = self.model.count_params()
-                trainable_params = sum([tf.keras.backend.count_params(w) for w in self.model.trainable_weights])
-                params.update({
-                    "model_total_parameters": int(total_params),
-                    "model_trainable_parameters": int(trainable_params),
-                    "model_non_trainable_parameters": int(total_params - trainable_params),
-                })
-            except Exception as e:
-                print(f"Warning: Could not get model parameters: {e}")
-        
-        # Add base model details if available
-        if hasattr(self, 'base_model') and self.base_model is not None:
-            try:
-                params.update({
-                    "base_model_layers": len(self.base_model.layers),
-                    "base_model_trainable": self.base_model.trainable,
-                })
-            except Exception as e:
-                print(f"Warning: Could not get base model details: {e}")
         
         # Only include fine-tuning parameters if dual_stage is True
         if self.dual_stage:

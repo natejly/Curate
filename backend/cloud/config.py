@@ -18,7 +18,7 @@ class TrainingConfig:
     
     # Model configuration  
     base_model_name: str = "EfficientNetB0"
-    img_size: Tuple[int, int] = (32, 32)
+    img_size: Optional[Tuple[int, int]] = None  # Auto-detect from dataset, or set manually
     
     # Training hyperparameters
     batch_size: int = 32

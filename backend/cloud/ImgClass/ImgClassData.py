@@ -20,9 +20,10 @@ class ImgClassData:
     """
     Data Parser for Image Classification
     """
-    def __init__(self, filepath: str, train_ratio: float = 0.7, val_ratio: float = 0.15, test_ratio: float = 0.15, debug = False):
+    def __init__(self, filepath: str, train_ratio: float = 0.7, val_ratio: float = 0.15, test_ratio: float = 0.15, debug = False, auto_val_ratio: float = 0.2):
         self.filepath = filepath
         self.dataset_name = os.path.basename(filepath)
+        self.auto_val_ratio = auto_val_ratio  # Ratio to use when creating validation from training data
 
         # Get initial tree structure
         tree_json, leaf_files = self.folder_tree_json(filepath)
@@ -278,10 +279,112 @@ class ImgClassData:
             if "test" in data["splits"]:
                 for value in data["splits"]["test"].values():
                     test_folders.append(value)
+            
+            # Check if we only have train and test folders (no validation)
+            has_train = "train" in data["splits"] and len(data["splits"]["train"]) > 0
+            has_val = "val" in data["splits"] and len(data["splits"]["val"]) > 0
+            has_test = "test" in data["splits"] and len(data["splits"]["test"]) > 0
+            
+            if has_train and has_test and not has_val:
+                print("Detected train and test folders but no validation folder.")
+                print(f"Creating validation set from {self.auto_val_ratio*100:.0f}% of training data...")
+                self._create_validation_from_train(data["splits"]["train"], validation_ratio=self.auto_val_ratio)
+                
+                # Re-analyze the dataset structure after creating validation split
+                tree_json, _ = self.folder_tree_json(self.filepath)
+                updated_splits = self.analyze_dataset_structure_and_splits(tree_json, self.filepath)
+                
+                # Update val_folders with the newly created validation folders
+                if "val" in updated_splits["splits"]:
+                    val_folders = []
+                    for value in updated_splits["splits"]["val"].values():
+                        val_folders.append(value)
+                
         else:
             # If no splits exist and auto_split is False, return empty lists
             # The user can manually call create_splits() or split_dataset() if needed
             pass
 
         return train_folders, val_folders, test_folders
+    
+    def _create_validation_from_train(self, train_splits, validation_ratio=0.2):
+        """
+        Create validation set by moving files from training folders.
+        
+        Args:
+            train_splits: Dictionary of class_name -> folder_path for training data
+            validation_ratio: Fraction of training data to move to validation (default 0.2 = 20%)
+        """
+        # Create validation directory
+        val_dir = os.path.join(self.filepath, "val")
+        os.makedirs(val_dir, exist_ok=True)
+        
+        for class_name, train_folder_path in train_splits.items():
+            if not os.path.exists(train_folder_path):
+                print(f"Warning: Training folder {train_folder_path} does not exist, skipping...")
+                continue
+            
+            # Create validation class folder
+            val_class_dir = os.path.join(val_dir, class_name)
+            os.makedirs(val_class_dir, exist_ok=True)
+            
+            # Get all files in the training class folder
+            try:
+                all_files = [f for f in os.listdir(train_folder_path) 
+                           if os.path.isfile(os.path.join(train_folder_path, f))]
+                
+                if not all_files:
+                    print(f"Warning: No files found in {train_folder_path}, skipping...")
+                    continue
+                
+                # Shuffle files for random selection
+                random.shuffle(all_files)
+                
+                # Calculate number of files to move to validation
+                n_total = len(all_files)
+                n_val = max(1, int(validation_ratio * n_total))  # At least 1 file for validation
+                
+                # Ensure we don't move all files (leave at least 1 for training)
+                if n_val >= n_total:
+                    n_val = n_total - 1
+                
+                val_files = all_files[:n_val]
+                
+                print(f"Moving {n_val}/{n_total} files from {class_name} training to validation")
+                
+                # Move files to validation folder
+                for file_name in val_files:
+                    src_path = os.path.join(train_folder_path, file_name)
+                    dst_path = os.path.join(val_class_dir, file_name)
+                    
+                    try:
+                        shutil.move(src_path, dst_path)
+                    except Exception as e:
+                        print(f"Error moving {src_path} to {dst_path}: {e}")
+                        
+            except Exception as e:
+                print(f"Error processing class {class_name}: {e}")
+                continue
+        
+        print(f"Validation set created successfully in {val_dir}")
+        
+        # Print summary statistics
+        total_train_files = 0
+        total_val_files = 0
+        
+        for class_name in train_splits.keys():
+            train_path = train_splits[class_name]
+            val_path = os.path.join(val_dir, class_name)
+            
+            train_count = len([f for f in os.listdir(train_path) 
+                             if os.path.isfile(os.path.join(train_path, f))]) if os.path.exists(train_path) else 0
+            val_count = len([f for f in os.listdir(val_path) 
+                           if os.path.isfile(os.path.join(val_path, f))]) if os.path.exists(val_path) else 0
+            
+            total_train_files += train_count
+            total_val_files += val_count
+            
+            print(f"  {class_name}: {train_count} training, {val_count} validation")
+        
+        print(f"Total: {total_train_files} training, {total_val_files} validation files")
 
